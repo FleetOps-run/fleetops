@@ -4,7 +4,7 @@ FleetOps holds the keys to the hosts and clusters it manages: Docker socket acce
 
 ## Reporting a vulnerability
 
-**Please don't report vulnerabilities in a public issue, pull request or discussion.** Instead, use GitHub's [private vulnerability reporting](https://github.com/pravinbanjade/fleetops/security/advisories/new) (Security → *Report a vulnerability*). Only you and the maintainer can see the report.
+**Please don't report vulnerabilities in a public issue, pull request or discussion.** Instead, use GitHub's [private vulnerability reporting](https://github.com/FleetOps-run/fleetops/security/advisories/new) (Security → *Report a vulnerability*). Only you and the maintainer can see the report.
 
 Include what you can of:
 

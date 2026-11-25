@@ -1,8 +1,8 @@
 # Starter values for the FleetOps Helm chart: only the settings most installs
 # change. Anything not set here keeps the chart's default. Every option is in
 # the chart's values.yaml:
-#   https://github.com/pravinbanjade/fleetops/blob/main/deploy/helm/fleetops/values.yaml
-# or run `helm show values oci://ghcr.io/pravinbanjade/charts/fleetops --version <version>`.
+#   https://github.com/FleetOps-run/fleetops/blob/main/deploy/helm/fleetops/values.yaml
+# or run `helm show values oci://ghcr.io/fleetops-run/charts/fleetops --version <version>`.
 
 # Where browsers reach FleetOps, e.g. https://fleet.example.com. Single
 # sign-on redirects need it. When empty and the ingress below has TLS, the

@@ -10,9 +10,9 @@ version: 1.4.1
 appVersion: "1.4.1"
 kubeVersion: ">=1.25.0-0"
 home: https://fleetops.run
-icon: https://raw.githubusercontent.com/pravinbanjade/fleetops/main/web/public/favicon.svg
+icon: https://raw.githubusercontent.com/FleetOps-run/fleetops/main/web/public/favicon.svg
 sources:
-  - https://github.com/pravinbanjade/fleetops
+  - https://github.com/FleetOps-run/fleetops
 keywords:
   - docker
   - kubernetes

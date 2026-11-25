@@ -7,10 +7,10 @@ FleetOps manages Kubernetes clusters next to Docker hosts. This page covers addi
 The Helm chart in [deploy/helm/fleetops](../deploy/helm/fleetops/README.md) runs the server in a cluster: one pod with its database on a persistent volume, the UI on port 9000, HTTPS for agents on 9443, and an optional Ingress.
 
 ```sh
-helm install fleetops oci://ghcr.io/pravinbanjade/charts/fleetops --namespace fleetops --create-namespace
+helm install fleetops oci://ghcr.io/fleetops-run/charts/fleetops --namespace fleetops --create-namespace
 ```
 
-The chart is also in a classic repository (`helm repo add fleetops https://pravinbanjade.github.io/fleetops`, chart `fleetops/fleetops`), and [deploy/kubernetes/fleetops.yaml](../deploy/kubernetes/fleetops.yaml) is the same thing rendered for `kubectl apply`. Installed this way, FleetOps manages the cluster it runs in out of the box: the chart binds its service account to `cluster-admin` (`rbac.clusterRole` picks a narrower role, `rbac.create=false` turns it off), and on first start FleetOps registers that cluster as the **local** environment. Other clusters are added as below.
+The chart is also in a classic repository (`helm repo add fleetops https://fleetops-run.github.io/fleetops`, chart `fleetops/fleetops`), and [deploy/kubernetes/fleetops.yaml](../deploy/kubernetes/fleetops.yaml) is the same thing rendered for `kubectl apply`. Installed this way, FleetOps manages the cluster it runs in out of the box: the chart binds its service account to `cluster-admin` (`rbac.clusterRole` picks a narrower role, `rbac.create=false` turns it off), and on first start FleetOps registers that cluster as the **local** environment. Other clusters are added as below.
 
 To configure the install, see the chart README's [Configure](../deploy/helm/fleetops/README.md#configure) section: it links the full default `values.yaml` and the [helmfile starter](../deploy/helmfile/) (`helmfile.yaml` plus a short `values.yaml`).
 

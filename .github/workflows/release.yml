@@ -9,9 +9,9 @@ name: Release
 # in its package settings.
 #
 # The Helm chart (deploy/helm/fleetops) is published with each release: as an
-# OCI artifact at oci://ghcr.io/pravinbanjade/charts/fleetops, and as a
+# OCI artifact at oci://ghcr.io/fleetops-run/charts/fleetops, and as a
 # classic Helm repository whose index.yaml lives on the gh-pages branch
-# (served by GitHub Pages at https://pravinbanjade.github.io/fleetops) and
+# (served by GitHub Pages at https://fleetops-run.github.io/fleetops) and
 # points at the chart attached to the GitHub release.
 
 on:
@@ -30,7 +30,7 @@ env:
   AGENT_IMAGE: docker.io/fleets/fleetops-agent
   EE_IMAGE: docker.io/fleets/fleetops-ee
   # GHCR names must be lowercase, so the owner is spelled out.
-  GHCR: ghcr.io/pravinbanjade
+  GHCR: ghcr.io/fleetops-run
 
 jobs:
   release:
@@ -176,7 +176,7 @@ jobs:
 
           Static linux binaries of each, with SHA-256 checksums, are attached below.
 
-          Helm chart \`fleetops $VERSION\`: \`oci://$GHCR/charts/fleetops\`, or \`helm repo add fleetops https://pravinbanjade.github.io/fleetops\`.
+          Helm chart \`fleetops $VERSION\`: \`oci://$GHCR/charts/fleetops\`, or \`helm repo add fleetops https://fleetops-run.github.io/fleetops\`.
           Its default values are attached as \`fleetops-values.yaml\`; a starter helmfile and values file are in \`deploy/helmfile/\`.
           EOF
           )

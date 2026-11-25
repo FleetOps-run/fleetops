@@ -5,13 +5,13 @@ Runs the FleetOps server in a Kubernetes cluster: one pod with its SQLite databa
 ## Install
 
 ```sh
-helm install fleetops oci://ghcr.io/pravinbanjade/charts/fleetops --namespace fleetops --create-namespace
+helm install fleetops oci://ghcr.io/fleetops-run/charts/fleetops --namespace fleetops --create-namespace
 ```
 
 Or from the classic Helm repository:
 
 ```sh
-helm repo add fleetops https://pravinbanjade.github.io/fleetops
+helm repo add fleetops https://fleetops-run.github.io/fleetops
 helm install fleetops fleetops/fleetops --namespace fleetops --create-namespace
 ```
 
@@ -21,20 +21,20 @@ Then open the UI and create the admin account within 10 minutes of the pod start
 kubectl -n fleetops port-forward svc/fleetops 9000:9000   # http://localhost:9000
 ```
 
-Without Helm, apply the manifest rendered from this chart with its defaults: `kubectl create namespace fleetops && kubectl apply -n fleetops -f https://raw.githubusercontent.com/pravinbanjade/fleetops/main/deploy/kubernetes/fleetops.yaml`.
+Without Helm, apply the manifest rendered from this chart with its defaults: `kubectl create namespace fleetops && kubectl apply -n fleetops -f https://raw.githubusercontent.com/FleetOps-run/fleetops/main/deploy/kubernetes/fleetops.yaml`.
 
 ## Configure
 
-Every option and its default is in the chart's [`values.yaml`](https://github.com/pravinbanjade/fleetops/blob/main/deploy/helm/fleetops/values.yaml) (the [table below](#values) summarises them). To start from a copy:
+Every option and its default is in the chart's [`values.yaml`](https://github.com/FleetOps-run/fleetops/blob/main/deploy/helm/fleetops/values.yaml) (the [table below](#values) summarises them). To start from a copy:
 
 ```sh
 # The values of the chart version you install (here the latest release):
-curl -LO https://github.com/pravinbanjade/fleetops/releases/latest/download/fleetops-values.yaml
+curl -LO https://github.com/FleetOps-run/fleetops/releases/latest/download/fleetops-values.yaml
 # Or ask Helm, adding --version <chart version> to pin one:
-helm show values oci://ghcr.io/pravinbanjade/charts/fleetops > fleetops-values.yaml
+helm show values oci://ghcr.io/fleetops-run/charts/fleetops > fleetops-values.yaml
 ```
 
-The [raw file on `main`](https://raw.githubusercontent.com/pravinbanjade/fleetops/main/deploy/helm/fleetops/values.yaml) can be ahead of the latest release; the release asset and `helm show values` always match a chart version.
+The [raw file on `main`](https://raw.githubusercontent.com/FleetOps-run/fleetops/main/deploy/helm/fleetops/values.yaml) can be ahead of the latest release; the release asset and `helm show values` always match a chart version.
 
 Most installs change only a few settings. [`deploy/helmfile/`](../../helmfile/) has a starter `values.yaml` with just those (public URL, ingress, TLS, license, sealing key, storage, resources) and a `helmfile.yaml` that installs the chart with it, pinned to a chart version. Copy both files, edit `values.yaml`, then:
 
@@ -42,7 +42,7 @@ Most installs change only a few settings. [`deploy/helmfile/`](../../helmfile/) 
 helmfile apply
 ```
 
-Without helmfile, pass the same file to Helm: `helm upgrade --install fleetops oci://ghcr.io/pravinbanjade/charts/fleetops -n fleetops --create-namespace -f values.yaml`.
+Without helmfile, pass the same file to Helm: `helm upgrade --install fleetops oci://ghcr.io/fleetops-run/charts/fleetops -n fleetops --create-namespace -f values.yaml`.
 
 ## Managing the cluster FleetOps runs in
 
@@ -83,7 +83,7 @@ Enterprise license and a sealing key kept outside the volume:
 ```sh
 kubectl -n fleetops create secret generic fleetops-license --from-file=license=fleetops.license
 kubectl -n fleetops create secret generic fleetops-secret-key --from-literal=secret-key="$(openssl rand -base64 32)"
-helm upgrade --install fleetops oci://ghcr.io/pravinbanjade/charts/fleetops -n fleetops \
+helm upgrade --install fleetops oci://ghcr.io/fleetops-run/charts/fleetops -n fleetops \
   --set license.existingSecret=fleetops-license \
   --set secretKey.existingSecret=fleetops-secret-key
 ```
@@ -94,7 +94,7 @@ Set `secretKey.existingSecret` on the first install only, or to the key already 
 
 | Key | Default | Description |
 |---|---|---|
-| `image.repository` | `docker.io/fleets/fleetops` | Also at `ghcr.io/pravinbanjade/fleetops`. |
+| `image.repository` | `docker.io/fleets/fleetops` | Also at `ghcr.io/fleetops-run/fleetops`. |
 | `image.tag` | chart `appVersion` | |
 | `image.digest` | `""` | Pins the image by digest instead of tag. |
 | `publicUrl` | `""` | Where browsers reach FleetOps; defaults to the first TLS ingress host. |

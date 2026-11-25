@@ -2,7 +2,7 @@
 
 **A fast, live web UI for Docker hosts and Kubernetes clusters, in one small binary.**
 
-[![Release](https://img.shields.io/github/v/release/pravinbanjade/fleetops)](https://github.com/pravinbanjade/fleetops/releases) [![Docker pulls](https://img.shields.io/docker/pulls/fleets/fleetops)](https://hub.docker.com/r/fleets/fleetops) [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE) [![GitHub stars](https://img.shields.io/github/stars/pravinbanjade/fleetops?style=social)](https://github.com/pravinbanjade/fleetops/stargazers)
+[![Release](https://img.shields.io/github/v/release/FleetOps-run/fleetops)](https://github.com/FleetOps-run/fleetops/releases) [![Docker pulls](https://img.shields.io/docker/pulls/fleets/fleetops)](https://hub.docker.com/r/fleets/fleetops) [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE) [![GitHub stars](https://img.shields.io/github/stars/FleetOps-run/fleetops?style=social)](https://github.com/FleetOps-run/fleetops/stargazers)
 
 FleetOps is a self-hosted container management platform. It is a single Rust binary with the web UI and a SQLite database built in. Run it next to a Docker or Podman socket, inside a Kubernetes cluster, or on a plain server with neither, and your team can manage containers, images, volumes, networks and Compose projects from the browser. Add Docker hosts through a dial-out agent, Docker Swarms through an agent on every node, and Kubernetes clusters by kubeconfig or an in-cluster agent, all in the same UI.
 
@@ -63,7 +63,7 @@ docker run -d --name fleetops -p 9000:9000 \
   fleets/fleetops
 ```
 
-The same images are mirrored to `ghcr.io/pravinbanjade/fleetops` (and `fleetops-agent`) for hosts that hit Docker Hub's pull limits.
+The same images are mirrored to `ghcr.io/fleetops-run/fleetops` (and `fleetops-agent`) for hosts that hit Docker Hub's pull limits.
 
 Open <http://localhost:9000> and create the admin account. Setup locks if no admin is created within 10 minutes of starting, until the server restarts.
 
@@ -73,7 +73,7 @@ The image runs as a non-root user on `distroless/static` for linux/amd64 and lin
 
 ### Other ways to run it
 
-- **Binary.** Static linux binaries with SHA-256 checksums are on the [releases page](https://github.com/pravinbanjade/fleetops/releases):
+- **Binary.** Static linux binaries with SHA-256 checksums are on the [releases page](https://github.com/FleetOps-run/fleetops/releases):
 
   ```sh
   ./fleetops --data ./data --bind 127.0.0.1:9000
@@ -84,19 +84,19 @@ The image runs as a non-root user on `distroless/static` for linux/amd64 and lin
 - **Kubernetes.** A Helm chart runs the server in a cluster, with its database on a persistent volume:
 
   ```sh
-  helm install fleetops oci://ghcr.io/pravinbanjade/charts/fleetops --namespace fleetops --create-namespace
+  helm install fleetops oci://ghcr.io/fleetops-run/charts/fleetops --namespace fleetops --create-namespace
   ```
 
-  The chart is also in a classic repository: `helm repo add fleetops https://pravinbanjade.github.io/fleetops`, then `helm install fleetops fleetops/fleetops ...`.
+  The chart is also in a classic repository: `helm repo add fleetops https://fleetops-run.github.io/fleetops`, then `helm install fleetops fleetops/fleetops ...`.
 
-  Default values: [view](https://github.com/pravinbanjade/fleetops/blob/main/deploy/helm/fleetops/values.yaml) · [download](https://github.com/pravinbanjade/fleetops/releases/latest/download/fleetops-values.yaml) (latest release). For a ready-to-edit setup, copy the [helmfile starter](deploy/helmfile/), a `helmfile.yaml` plus a short `values.yaml` with the settings most installs change.
+  Default values: [view](https://github.com/FleetOps-run/fleetops/blob/main/deploy/helm/fleetops/values.yaml) · [download](https://github.com/FleetOps-run/fleetops/releases/latest/download/fleetops-values.yaml) (latest release). For a ready-to-edit setup, copy the [helmfile starter](deploy/helmfile/), a `helmfile.yaml` plus a short `values.yaml` with the settings most installs change.
 
   See the [chart's README](deploy/helm/fleetops/README.md) for ingress, TLS and license settings, and [deploy/kubernetes/fleetops.yaml](deploy/kubernetes/fleetops.yaml) for a plain `kubectl apply`.
 
 - **From source.** Needs Rust (stable), Node.js 24+ and pnpm 12. See [docs/development.md](docs/development.md).
 
   ```sh
-  git clone https://github.com/pravinbanjade/fleetops.git
+  git clone https://github.com/FleetOps-run/fleetops.git
   cd fleetops
   make build          # builds the UI, then the release binary with it embedded
   ./target/release/fleetops --data ./data --bind 127.0.0.1:9000
@@ -279,7 +279,7 @@ To report a vulnerability, see [SECURITY.md](SECURITY.md). Please don't open a p
 
 ## Contributing
 
-Bug reports, ideas and pull requests are welcome on [GitHub](https://github.com/pravinbanjade/fleetops). Read [CONTRIBUTING.md](CONTRIBUTING.md) first: commits need a DCO sign-off (`git commit -s`), and new behaviour starts with a failing test.
+Bug reports, ideas and pull requests are welcome on [GitHub](https://github.com/FleetOps-run/fleetops). Read [CONTRIBUTING.md](CONTRIBUTING.md) first: commits need a DCO sign-off (`git commit -s`), and new behaviour starts with a failing test.
 
 ## License
 
