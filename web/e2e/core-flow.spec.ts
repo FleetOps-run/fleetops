@@ -71,6 +71,8 @@ test("setup, log in, pull, run, watch, search logs, exec and remove", async ({ p
     await form.getByLabel("Image", { exact: true }).fill(IMAGE);
     await form.getByLabel("Name", { exact: true }).fill(NAME);
     await form.getByLabel("Command", { exact: true }).fill(`sh -c 'i=0; while true; do echo "tick $i"; i=$((i+1)); sleep 1; done'`);
+    // The page scrolls inside the shell; the document itself never does (#49).
+    expect(await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight)).toBeLessThanOrEqual(0);
     await page.getByRole("button", { name: "Create", exact: true }).click();
     await expect(page.getByRole("heading", { name: NAME })).toBeVisible();
     id = page.url().split("/").pop()!;
