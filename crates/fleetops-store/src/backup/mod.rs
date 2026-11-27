@@ -100,7 +100,7 @@ pub fn parse_name(name: &str) -> Option<i64> {
     }
     let dt = jiff::civil::DateTime::strptime("%Y%m%d-%H%M%S", stamp).ok()?;
     Some(
-        dt.to_zoned(jiff::tz::TimeZone::UTC)
+        dt.to_zoned_datetime(jiff::tz::TimeZone::UTC)
             .ok()?
             .timestamp()
             .as_second(),
