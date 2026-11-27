@@ -25,6 +25,16 @@ fn credential() -> Option<(i64, String)> {
     CREDENTIAL.try_with(|c| c.get().cloned()).ok().flatten()
 }
 
+/// `f` with this task's API token carried over: wrap work a request hands
+/// to `tokio::spawn`, so the audit rows it writes still name the token.
+pub fn carry_credential<F: Future>(f: F) -> impl Future<Output = F::Output> {
+    let cell = OnceLock::new();
+    if let Some(c) = credential() {
+        let _ = cell.set(c);
+    }
+    CREDENTIAL.scope(cell, f)
+}
+
 pub struct NewAudit<'a> {
     pub ts: i64,
     pub user_id: Option<i64>,

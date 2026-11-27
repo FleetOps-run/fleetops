@@ -55,6 +55,8 @@ pub async fn create(
     AdminUser(admin): AdminUser,
     ApiJson(body): ApiJson<CreateUser>,
 ) -> ApiResult<(StatusCode, Json<User>)> {
+    // An API token must not mint accounts it could then sign in with.
+    admin.require_session()?;
     validate_username(&body.username)?;
     validate_password(&body.password)?;
     if let Some(max) = s.entitlements.max_users() {
@@ -101,6 +103,11 @@ pub async fn update(
     ApiPath(id): ApiPath<i64>,
     ApiJson(body): ApiJson<UpdateUser>,
 ) -> ApiResult<Json<User>> {
+    // An API token must not set passwords or roles, or it could take over
+    // an account and outlive its own revocation.
+    if body.role.is_some() || body.password.is_some() {
+        admin.require_session()?;
+    }
     if body.role.is_none() && body.password.is_none() && body.disabled.is_none() {
         return Err(Error::Invalid("nothing to update".into()).into());
     }

@@ -271,11 +271,11 @@ pub async fn set(
     let git = res?;
     tokio::spawn({
         let (s, stack) = (s.clone(), stack.clone());
-        async move {
+        fleetops_store::carry_credential(async move {
             if let Err(e) = sync_stack(&s, &stack, SyncTrigger::Settings(user)).await {
                 tracing::warn!(error = %e, stack = %stack.name, "git sync failed");
             }
-        }
+        })
     });
     Ok(Json(GitSaved {
         status: status(&s, git),

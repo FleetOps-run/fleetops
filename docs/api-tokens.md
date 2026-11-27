@@ -33,6 +33,7 @@ Some things need a person signed in with a browser:
 
 - open the real-time websocket, so no container or pod terminals and no live log streams;
 - sign out or change a password;
+- create users, or set any user's password or role (an admin's token included), so a leaked token cannot turn itself into an account that outlives revoking it;
 - create, list or revoke tokens (a token cannot make more tokens).
 
 These answer `403` with `this needs a signed-in browser session`. A read-only token also gets `403` (`this token is read-only`) for anything other than GET.

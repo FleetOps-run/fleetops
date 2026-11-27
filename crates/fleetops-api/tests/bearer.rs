@@ -2,6 +2,7 @@ mod common;
 
 use async_trait::async_trait;
 use axum::http::StatusCode;
+use common::fake_docker::summary;
 use common::*;
 use fleetops_api::auth::bearer::{TokenAuth, TokenRef};
 use fleetops_api::AppState;
@@ -178,4 +179,96 @@ async fn audit_rows_name_the_token() {
         .find(|e| e["action"] == "env.create" && e["token_name"].is_null())
         .expect("a row made with the cookie");
     assert_ne!(token_row["target_id"], cookie_row["target_id"]);
+}
+
+/// The newest audit row for `action`, once it is written.
+async fn audited(app: &TestApp, action: &str) -> fleetops_store::AuditEntry {
+    for _ in 0..200 {
+        if let Some(e) = app
+            .store
+            .list_audit(100, None)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|e| e.action == action)
+        {
+            return e;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!("no {action} row");
+}
+
+#[tokio::test]
+async fn background_work_is_tagged_with_the_token() {
+    let (app, admin) = tokens_app().await;
+    app.add_env(&admin, "local").await;
+    app.fake.add(summary("c1", "web", "running", None));
+    let r = app
+        .send(req_bearer(
+            "POST",
+            "/api/v1/envs/local/containers/c1/recreate",
+            "fo_good",
+            Some(json!({"image": "nginx:2"})),
+        ))
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{:?}", r.json);
+    let row = audited(&app, "container.recreate").await;
+    assert_eq!(row.token_name.as_deref(), Some("ci"), "detached work");
+
+    let r = app
+        .send(req_bearer(
+            "POST",
+            "/api/v1/envs/local/images/pull",
+            "fo_good",
+            Some(json!({"image": "nginx:1.27"})),
+        ))
+        .await;
+    assert_eq!(r.status, StatusCode::ACCEPTED, "{:?}", r.json);
+    let row = audited(&app, "image.pull").await;
+    assert_eq!(row.token_name.as_deref(), Some("ci"), "a task");
+}
+
+#[tokio::test]
+async fn admin_tokens_cannot_create_users_or_change_passwords_and_roles() {
+    let (app, admin) = tokens_app().await;
+    let bob = app.create_user(&admin, "bob", "bob-password", "user").await;
+    let bob_id = bob.json["id"].as_i64().unwrap();
+    let me = app
+        .store
+        .find_credentials(ADMIN)
+        .await
+        .unwrap()
+        .unwrap()
+        .0
+        .id;
+    let create = app
+        .send(req_bearer(
+            "POST",
+            "/api/v1/users",
+            "fo_good",
+            Some(json!({"username": "eve", "password": "eve-password", "role": "admin"})),
+        ))
+        .await;
+    assert_eq!(create.status, StatusCode::FORBIDDEN, "{:?}", create.json);
+    for (id, body) in [
+        (me, json!({"password": "taken-over-pw"})),
+        (bob_id, json!({"password": "taken-over-pw"})),
+        (bob_id, json!({"role": "admin"})),
+    ] {
+        let r = app
+            .send(req_bearer(
+                "PATCH",
+                &format!("/api/v1/users/{id}"),
+                "fo_good",
+                Some(body.clone()),
+            ))
+            .await;
+        assert_eq!(r.status, StatusCode::FORBIDDEN, "{body}: {:?}", r.json);
+    }
+    // The admin's own session survived.
+    let still = app
+        .send(req("GET", "/api/v1/auth/me", None, Some(&admin)))
+        .await;
+    assert_eq!(still.status, StatusCode::OK);
 }
