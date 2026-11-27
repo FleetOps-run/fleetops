@@ -11,6 +11,7 @@ pub mod notify;
 pub mod roles;
 pub mod routes;
 pub mod scan;
+pub mod siem;
 pub mod sso;
 pub mod state;
 pub mod teams;
@@ -45,6 +46,9 @@ pub struct EeConfig {
     /// Replaces HTTP and SMTP for notifications; tests only.
     #[doc(hidden)]
     pub notify_transport: Option<Arc<dyn notify::send::Transport>>,
+    /// Replaces syslog and HTTP for audit forwarding; tests only.
+    #[doc(hidden)]
+    pub siem_sender: Option<Arc<dyn siem::send::Sender>>,
 }
 
 /// What the server wires in (editions spec §3.4).
@@ -72,6 +76,9 @@ pub struct EeParts {
     /// Notifications; spawn [`notify::notifier::Notifier::run`] with the
     /// finished app state. Already listening to `scan_engine`.
     pub notifier: Arc<notify::notifier::Notifier>,
+    /// Audit forwarding; spawn [`siem::forwarder::Forwarder::run`] with the
+    /// finished app state.
+    pub forwarder: Arc<siem::forwarder::Forwarder>,
 }
 
 /// The Enterprise routes, for the OpenAPI document (no license attached).
@@ -170,6 +177,14 @@ pub fn api_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(notify::routes::get_smtp, notify::routes::put_smtp))
         .routes(routes!(notify::routes::test_smtp))
         .routes(routes!(notify::routes::list_deliveries))
+        .routes(routes!(siem::routes::list, siem::routes::create))
+        .routes(routes!(siem::routes::update, siem::routes::delete))
+        .routes(routes!(siem::routes::test))
+        .routes(routes!(siem::routes::skip))
+        .routes(routes!(
+            siem::routes::get_retention,
+            siem::routes::put_retention
+        ))
         .routes(routes!(tokens::routes::list, tokens::routes::create))
         .routes(routes!(tokens::routes::list_all))
         .routes(routes!(tokens::routes::delete))
@@ -191,6 +206,7 @@ pub async fn init_with_keys(
     let scan_engine = scan::engine::Engine::new(config.scan_backend);
     scan_engine.set_events(Arc::new(notify::matcher::Matcher));
     let notifier = notify::notifier::Notifier::new(config.notify_transport);
+    let forwarder = siem::forwarder::Forwarder::new(config.siem_sender);
     state.load(store).await?;
     Ok(EeParts {
         entitlements: state.clone(),
@@ -199,6 +215,7 @@ pub async fn init_with_keys(
             .layer(Extension(runner.clone()))
             .layer(Extension(scan_engine.clone()))
             .layer(Extension(notifier.clone()))
+            .layer(Extension(forwarder.clone()))
             .layer(Extension(Arc::new(sso::flow::Runtime::new(
                 config.sso_endpoints,
             )))),
@@ -214,6 +231,7 @@ pub async fn init_with_keys(
         background: Box::pin(watch(state)),
         scan_engine,
         notifier,
+        forwarder,
     })
 }
 

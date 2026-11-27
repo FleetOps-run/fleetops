@@ -905,6 +905,361 @@
         ]
       }
     },
+    "/api/v1/ee/audit/retention": {
+      "get": {
+        "tags": [
+          "enterprise"
+        ],
+        "summary": "How many days audit rows are kept",
+        "operationId": "getAuditRetention",
+        "responses": {
+          "200": {
+            "description": "Retention",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Retention"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error: `{code, message, request_id}`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "enterprise"
+        ],
+        "summary": "Keep audit rows longer (needs the audit_sinks feature)",
+        "operationId": "putAuditRetention",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Retention"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Retention",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Retention"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error: `{code, message, request_id}`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrf": [],
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ee/audit/sinks": {
+      "get": {
+        "tags": [
+          "enterprise"
+        ],
+        "summary": "Where the audit log is forwarded",
+        "operationId": "listAuditSinks",
+        "responses": {
+          "200": {
+            "description": "Sinks, by name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SinkView"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error: `{code, message, request_id}`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "enterprise"
+        ],
+        "summary": "Forward the audit log somewhere (needs the audit_sinks feature)",
+        "operationId": "createAuditSink",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SinkBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "The sink",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SinkView"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error: `{code, message, request_id}`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrf": [],
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ee/audit/sinks/{id}": {
+      "put": {
+        "tags": [
+          "enterprise"
+        ],
+        "summary": "Change a sink (needs the audit_sinks feature)",
+        "operationId": "updateAuditSink",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Sink id",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SinkBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The sink",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SinkView"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error: `{code, message, request_id}`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrf": [],
+            "session": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "enterprise"
+        ],
+        "summary": "Stop forwarding to a sink",
+        "operationId": "deleteAuditSink",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Sink id",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "default": {
+            "description": "Error: `{code, message, request_id}`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrf": [],
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ee/audit/sinks/{id}/skip": {
+      "post": {
+        "tags": [
+          "enterprise"
+        ],
+        "summary": "Skip everything not sent yet (counted as a gap); for a receiver that keeps refusing a row",
+        "operationId": "skipAuditSink",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Sink id",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The sink",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SinkView"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error: `{code, message, request_id}`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrf": [],
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ee/audit/sinks/{id}/test": {
+      "post": {
+        "tags": [
+          "enterprise"
+        ],
+        "summary": "Send one sample row (not written to the audit log)",
+        "operationId": "testAuditSink",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Sink id",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The receiver took it"
+          },
+          "default": {
+            "description": "Error: `{code, message, request_id}`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrf": [],
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/v1/ee/backup/recent": {
       "get": {
         "tags": [
@@ -15483,6 +15838,7 @@
           "backup",
           "vuln_scan",
           "notifications",
+          "audit_sinks",
           "api_tokens"
         ]
       },
@@ -15815,6 +16171,21 @@
               "type": "string"
             },
             "description": "`row.verb` permissions, e.g. `volumes.delete`."
+          }
+        }
+      },
+      "HeaderBody": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string",
+            "description": "Empty keeps the stored value for this name."
           }
         }
       },
@@ -18048,53 +18419,20 @@
         }
       },
       "Retention": {
-        "oneOf": [
-          {
-            "type": "object",
-            "description": "The newest N.",
-            "required": [
-              "value",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "count"
-                ]
-              },
-              "value": {
-                "type": "integer",
-                "format": "int32",
-                "description": "The newest N.",
-                "minimum": 0
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "Those made in the last N days.",
-            "required": [
-              "value",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "days"
-                ]
-              },
-              "value": {
-                "type": "integer",
-                "format": "int32",
-                "description": "Those made in the last N days.",
-                "minimum": 0
-              }
-            }
-          }
+        "type": "object",
+        "required": [
+          "days"
         ],
-        "description": "How many backups each target keeps."
+        "properties": {
+          "days": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "default_days": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
       },
       "RevisionDetail": {
         "type": "object",
@@ -19380,6 +19718,199 @@
           }
         }
       },
+      "SinkBody": {
+        "type": "object",
+        "required": [
+          "name",
+          "kind"
+        ],
+        "properties": {
+          "ca_pem": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Left out keeps the stored certificate; `\"\"` removes it."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "headers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HeaderBody"
+            }
+          },
+          "host": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SinkKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "port": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "start": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SinkStart",
+                "description": "Creating only."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Splunk HEC token; empty or left out keeps the stored one."
+          },
+          "transport": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SyslogTransport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Empty or left out keeps the stored URL."
+          }
+        }
+      },
+      "SinkKind": {
+        "type": "string",
+        "enum": [
+          "syslog",
+          "splunk_hec",
+          "http"
+        ]
+      },
+      "SinkStart": {
+        "type": "string",
+        "enum": [
+          "now",
+          "all"
+        ]
+      },
+      "SinkView": {
+        "type": "object",
+        "description": "A sink as the page shows it: never a secret.",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "enabled",
+          "target",
+          "url_set",
+          "header_names",
+          "token_set",
+          "ca_set",
+          "cursor",
+          "behind",
+          "gap_rows"
+        ],
+        "properties": {
+          "behind": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Audit rows not sent yet."
+          },
+          "ca_set": {
+            "type": "boolean"
+          },
+          "cursor": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The last audit id the receiver accepted."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "gap_rows": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Rows retention removed before this sink sent them."
+          },
+          "header_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SinkKind"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_error_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "last_sent_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string",
+            "description": "`host:port` for syslog, the URL's host otherwise."
+          },
+          "token_set": {
+            "type": "boolean"
+          },
+          "transport": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SyslogTransport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "url_set": {
+            "type": "boolean",
+            "description": "Whether a URL is stored; the URL itself is a secret."
+          }
+        }
+      },
       "SmtpBody": {
         "type": "object",
         "required": [
@@ -20200,6 +20731,14 @@
             "format": "int64"
           }
         }
+      },
+      "SyslogTransport": {
+        "type": "string",
+        "enum": [
+          "udp",
+          "tcp",
+          "tls"
+        ]
       },
       "TagBody": {
         "type": "object",

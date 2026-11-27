@@ -1,6 +1,6 @@
 import { createRoute, lazyRouteComponent } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { BellRing, KeyRound, KeySquare, LogIn, ShieldAlert, ShieldCheck, UsersRound } from "lucide-react";
+import { BellRing, KeyRound, KeySquare, LogIn, Send, ShieldAlert, ShieldCheck, UsersRound } from "lucide-react";
 import type { EeModule } from "@/ee-contract";
 import { ApiTokensSection } from "./ApiTokensSection";
 import { AuditExport } from "./AuditExport";
@@ -47,6 +47,11 @@ export const ee: EeModule = {
     }),
     createRoute({
       getParentRoute: () => admin,
+      path: "audit-forwarding",
+      component: lazyRouteComponent(() => import("./AuditForwardingPage"), "AuditForwardingPage"),
+    }),
+    createRoute({
+      getParentRoute: () => admin,
       path: "tokens",
       component: lazyRouteComponent(() => import("./ApiTokensPage"), "ApiTokensPage"),
     }),
@@ -79,6 +84,7 @@ export const ee: EeModule = {
     { to: "/admin/tokens", label: "API tokens", icon: KeySquare, group: "people", feature: "api_tokens" },
     { to: "/admin/security", label: "Security scanning", icon: ShieldAlert, group: "infra", feature: "vuln_scan" },
     { to: "/admin/notifications", label: "Notifications", icon: BellRing, group: "infra", feature: "notifications" },
+    { to: "/admin/audit-forwarding", label: "Audit forwarding", icon: Send, group: "records", feature: "audit_sinks" },
     { to: "/admin/license", label: "License", icon: KeyRound, group: "license" },
   ],
   slots: {

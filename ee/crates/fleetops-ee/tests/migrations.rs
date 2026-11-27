@@ -137,13 +137,20 @@ async fn scan_tables_exist() {
         assert_eq!(n, 1, "{table}.platform");
     }
     let n: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'ee_audit_sinks'",
+    )
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(n, 1, "ee_audit_sinks");
+    let n: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'api_tokens'",
     )
     .fetch_one(store.pool())
     .await
     .unwrap();
     assert_eq!(n, 1, "api_tokens");
-    assert_eq!(fleetops_ee::db::migration_max(), 1_000_009);
+    assert_eq!(fleetops_ee::db::migration_max(), 1_000_011);
 }
 
 #[tokio::test]

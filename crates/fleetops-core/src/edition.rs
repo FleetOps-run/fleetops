@@ -33,6 +33,9 @@ pub enum Feature {
     /// Notifications to Slack, email and webhooks (`/ee/notifications`).
     /// Every active license has it.
     Notifications,
+    /// Audit forwarding to a SIEM and longer audit retention
+    /// (`/ee/audit/sinks`, `/ee/audit/retention`). Every active license has it.
+    AuditSinks,
     /// Personal API tokens (`/ee/tokens`) and `Authorization: Bearer`.
     /// Every active license has it.
     ApiTokens,
@@ -47,6 +50,7 @@ impl Feature {
         Feature::Backup,
         Feature::VulnScan,
         Feature::Notifications,
+        Feature::AuditSinks,
         Feature::ApiTokens,
     ];
 
@@ -59,6 +63,7 @@ impl Feature {
             Feature::Backup => "backup",
             Feature::VulnScan => "vuln_scan",
             Feature::Notifications => "notifications",
+            Feature::AuditSinks => "audit_sinks",
             Feature::ApiTokens => "api_tokens",
         }
     }

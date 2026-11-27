@@ -68,6 +68,7 @@ async fn admin_installs_a_license_and_features_turn_on() {
             "backup",
             "vuln_scan",
             "notifications",
+            "audit_sinks",
             "api_tokens"
         ])
     );
@@ -82,6 +83,7 @@ async fn admin_installs_a_license_and_features_turn_on() {
             "backup",
             "vuln_scan",
             "notifications",
+            "audit_sinks",
             "api_tokens"
         ])
     );
@@ -196,6 +198,7 @@ async fn delete_falls_back_to_file_then_none() {
             "backup",
             "vuln_scan",
             "notifications",
+            "audit_sinks",
             "api_tokens"
         ]),
         "back on the file's license, which names no features"

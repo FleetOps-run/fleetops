@@ -1,4 +1,4 @@
-//! The `api_tokens` table (`1000009_api_tokens.sql`).
+//! The `api_tokens` table (`1000011_api_tokens.sql`).
 
 use fleetops_core::{Error, Result};
 use serde::Serialize;

@@ -82,7 +82,11 @@ function Frame() {
           </DialogPrimitive.Content>
         </DialogPrimitive.Portal>
       </DialogPrimitive.Root>
-      <main className="min-w-0 bg-card md:min-h-0 md:overflow-y-auto md:rounded-[10px]">
+      {/* `relative` makes main the containing block for absolutely positioned
+          descendants, such as the hidden input Radix renders beside a
+          checkbox in a form. Otherwise they escape main's scroll clip and
+          stretch the document, so the whole shell scrolls (issue #49). */}
+      <main className="relative min-w-0 bg-card md:min-h-0 md:overflow-y-auto md:rounded-[10px]">
         <TopBar env={env} family={family} onMenu={() => setDrawer(true)} slotRef={setSlot} />
         <ConnectionBanner />
         <Slot name="shell.banner" />

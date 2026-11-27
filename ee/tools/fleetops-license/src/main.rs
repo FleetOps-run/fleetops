@@ -76,7 +76,7 @@ fn main() -> Result<()> {
                 .parse()
                 .with_context(|| format!("--expires {expires}: want YYYY-MM-DD"))?;
             let expires_at = date
-                .to_zoned(jiff::tz::TimeZone::UTC)?
+                .to_zoned_datetime(jiff::tz::TimeZone::UTC)?
                 .timestamp()
                 .as_second();
             let payload = Payload {
