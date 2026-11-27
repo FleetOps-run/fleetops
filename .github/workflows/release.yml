@@ -239,6 +239,7 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           web: "false"
+          cache-key: ${{ matrix.target }}
       - if: contains(matrix.target, 'musl')
         shell: bash
         run: sudo apt-get update -q && sudo apt-get install -qy musl-tools

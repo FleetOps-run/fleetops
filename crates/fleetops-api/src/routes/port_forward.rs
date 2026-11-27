@@ -67,6 +67,8 @@ pub struct RedeemBody {
 pub struct Redeemed {
     /// Send as `x-fleetops-forward` on each stream.
     pub credential: String,
+    /// Seconds the credential lasts; clients use this, not their own clock.
+    pub expires_in: i64,
     pub env: String,
     pub namespace: String,
     pub pod: String,
@@ -126,12 +128,19 @@ pub async fn mint(
     responses((status = 200, description = "The credential", body = Redeemed)))]
 pub async fn redeem(
     State(s): State<AppState>,
+    meta: crate::auth::extract::ClientMeta,
     ApiJson(b): ApiJson<RedeemBody>,
 ) -> ApiResult<Json<Redeemed>> {
+    let key = format!("pf-redeem:{}", meta.ip);
+    s.forwards
+        .redeem_limiter
+        .try_acquire(&key, std::time::Instant::now())?;
+    let now = now_unix();
     let (credential, t, expires_at) = s
         .forwards
-        .redeem(b.ticket.trim(), now_unix())
+        .redeem(b.ticket.trim(), now)
         .ok_or_else(|| Error::Unauthorized(EXPIRED.into()))?;
+    s.forwards.redeem_limiter.reset(&key);
     let target = format!("pods/{}/{}", t.ns, t.pod);
     let entry = NewAudit {
         ts: now_unix(),
@@ -148,6 +157,7 @@ pub async fn redeem(
     }
     Ok(Json(Redeemed {
         credential,
+        expires_in: expires_at - now,
         env: t.env,
         namespace: t.ns,
         pod: t.pod,
@@ -167,20 +177,22 @@ async fn still_allowed(s: &AppState, t: &Target) -> Result<Arc<dyn KubeOps>> {
     if user.disabled_at.is_some() {
         return Err(Error::Unauthorized(EXPIRED.into()));
     }
-    let env = s.envs.get(&t.env)?;
-    if env.id() != t.env_id {
-        return Err(Error::Forbidden("the environment changed".into()));
-    }
+    // By id, so a rename keeps the link; a deleted environment ends it.
+    let env = s
+        .envs
+        .get_by_id(t.env_id)
+        .ok_or_else(|| Error::Forbidden("the environment was removed".into()))?;
     let grants = effective_grant(s, t.user_id, env.id()).await?;
-    authorize_env(&grants, &t.env, Need::Perm(SHELL)).map_err(|e| match e {
+    authorize_env(&grants, env.name(), Need::Perm(SHELL)).map_err(|e| match e {
         Error::NotFound(_) => {
             Error::Forbidden("you no longer have access to this environment".into())
         }
         e => e,
     })?;
     grants.check_ns(SHELL, &t.ns)?;
-    env.kube()
-        .ok_or_else(|| Error::EnvUnavailable(format!("environment '{}' is unreachable", t.env)))
+    env.kube().ok_or_else(|| {
+        Error::EnvUnavailable(format!("environment '{}' is unreachable", env.name()))
+    })
 }
 
 #[utoipa::path(get, path = "/port-forward/stream", operation_id = "portForwardStream", tag = "kubernetes",
@@ -207,10 +219,7 @@ pub async fn stream(
     let Some((target, expires_at)) = s.forwards.lookup(&cred, now_unix()) else {
         return refuse(Error::Unauthorized(EXPIRED.into()));
     };
-    let ops = match still_allowed(&s, &target).await {
-        Ok(ops) => ops,
-        Err(e) => return refuse(e),
-    };
+    // The slot first: in memory, so a full link costs no database work.
     let Some(guard) = s.forwards.open_stream(&cred) else {
         return (
             StatusCode::TOO_MANY_REQUESTS,
@@ -220,6 +229,10 @@ pub async fn stream(
             ),
         )
             .into_response();
+    };
+    let ops = match still_allowed(&s, &target).await {
+        Ok(ops) => ops,
+        Err(e) => return refuse(e),
     };
     let ws = match ws {
         Ok(ws) => ws,
@@ -236,11 +249,27 @@ pub async fn stream(
     })
 }
 
+/// A WebSocket close reason holds at most 123 bytes.
+const CLOSE_REASON_MAX: usize = 123;
+
 fn close_frame(code: u16, reason: &str) -> Message {
+    let mut end = reason.len().min(CLOSE_REASON_MAX);
+    while !reason.is_char_boundary(end) {
+        end -= 1;
+    }
     Message::Close(Some(CloseFrame {
         code,
-        reason: reason.chars().take(120).collect::<String>().into(),
+        reason: reason[..end].to_string().into(),
     }))
+}
+
+/// Whether a failed re-check means access is gone (close the stream), not
+/// a passing database or cluster error (keep it, check again later).
+pub(crate) fn access_gone(e: &Error) -> bool {
+    matches!(
+        e,
+        Error::Unauthorized(_) | Error::Forbidden(_) | Error::NotFound(_)
+    )
 }
 
 /// Carries bytes both ways until either side ends, pinging the client so
@@ -283,11 +312,16 @@ async fn run(
                 Ok(0) | Err(_) => {
                     // The kubelet may still be reporting why; give it a moment.
                     let why = tokio::time::timeout(std::time::Duration::from_millis(500), &mut pod_error).await;
-                    let msg = match why {
-                        Ok(Some(e)) => close_frame(1011, &e),
-                        _ => Message::Close(None),
-                    };
-                    let _ = tx.send(msg).await;
+                    match why {
+                        Ok(Some(e)) => {
+                            // The whole reason as text; the close frame's is capped.
+                            let _ = tx.send(Message::Text(e.clone().into())).await;
+                            let _ = tx.send(close_frame(1011, &e)).await;
+                        }
+                        _ => {
+                            let _ = tx.send(Message::Close(None)).await;
+                        }
+                    }
                     return;
                 }
                 Ok(n) => {
@@ -311,6 +345,7 @@ async fn run(
                 Some(Ok(_)) => {}
             },
             Some(e) = &mut pod_error => {
+                let _ = tx.send(Message::Text(e.clone().into())).await;
                 let _ = tx.send(close_frame(1011, &e)).await;
                 return;
             }
@@ -324,11 +359,43 @@ async fn run(
                 return;
             }
             _ = recheck.tick() => {
-                if s.forwards.lookup(&cred, now_unix()).is_none() || still_allowed(&s, &t).await.is_err() {
-                    let _ = tx.send(close_frame(1008, "access to this pod was removed")).await;
+                if s.forwards.lookup(&cred, now_unix()).is_none() {
+                    let _ = tx.send(close_frame(1008, "the port-forward session ended")).await;
                     return;
+                }
+                match still_allowed(&s, &t).await {
+                    Ok(_) => {}
+                    Err(e) if access_gone(&e) => {
+                        let _ = tx.send(close_frame(1008, "access to this pod was removed")).await;
+                        return;
+                    }
+                    // A passing database or cluster error: keep the stream.
+                    Err(e) => tracing::warn!(error = %e, "port-forward re-check failed; keeping the stream"),
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_lost_access_ends_a_stream() {
+        assert!(access_gone(&Error::Forbidden("x".into())));
+        assert!(access_gone(&Error::Unauthorized("x".into())));
+        assert!(!access_gone(&Error::Internal("database is locked".into())));
+        assert!(!access_gone(&Error::EnvUnavailable("down".into())));
+    }
+
+    #[test]
+    fn close_reasons_fit_and_cut_on_a_character() {
+        let long = "é".repeat(100);
+        let Message::Close(Some(f)) = close_frame(1011, &long) else {
+            panic!("not a close frame")
+        };
+        assert!(f.reason.len() <= CLOSE_REASON_MAX);
+        assert!(f.reason.chars().all(|c| c == 'é'));
     }
 }

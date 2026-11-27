@@ -3,7 +3,10 @@
 //! `fleetops-cli` for a credential; each local TCP connection then opens a
 //! stream with that credential. Only SHA-256 hashes are kept.
 
-use crate::auth::token::{generate_token, hash_token};
+use crate::auth::{
+    limiter::LoginLimiter,
+    token::{generate_token, hash_token},
+};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -20,6 +23,11 @@ pub const CREDENTIAL_SECS: i64 = 8 * 3600;
 pub const MAX_STREAMS: usize = 16;
 /// Live credentials per user; the oldest goes first.
 pub const MAX_PER_USER: usize = 10;
+/// Unredeemed tickets per user; the oldest goes first.
+pub const MAX_TICKETS_PER_USER: usize = 20;
+/// Failed redeems per address per window, before 429s.
+pub const REDEEM_MAX_FAILURES: u32 = 10;
+pub const REDEEM_WINDOW: Duration = Duration::from_secs(300);
 /// The default re-check interval (`ApiConfig::forward_recheck`).
 pub const RECHECK: Duration = Duration::from_secs(60);
 /// The header `fleetops-cli` sends the credential in. Browsers cannot set
@@ -45,10 +53,36 @@ struct Entry {
     streams: Arc<()>,
 }
 
-#[derive(Default)]
 pub struct Forwards {
     tickets: Mutex<HashMap<String, Entry>>,
     credentials: Mutex<HashMap<String, Entry>>,
+    /// Redeem attempts per client address.
+    pub redeem_limiter: LoginLimiter,
+}
+
+impl Default for Forwards {
+    fn default() -> Self {
+        Forwards {
+            tickets: Mutex::default(),
+            credentials: Mutex::default(),
+            redeem_limiter: LoginLimiter::new(REDEEM_MAX_FAILURES, REDEEM_WINDOW),
+        }
+    }
+}
+
+/// Drops `user`'s oldest entries until `max - 1` remain, making room for one.
+fn make_room(map: &mut HashMap<String, Entry>, user: i64, max: usize) {
+    let mut mine: Vec<(String, i64)> = map
+        .iter()
+        .filter(|(_, e)| e.target.user_id == user)
+        .map(|(k, e)| (k.clone(), e.created_at))
+        .collect();
+    if mine.len() >= max {
+        mine.sort_by_key(|m| m.1);
+        for (k, _) in mine.iter().take(mine.len() + 1 - max) {
+            map.remove(k);
+        }
+    }
 }
 
 fn prune(map: &mut HashMap<String, Entry>, now: i64) {
@@ -64,6 +98,7 @@ impl Forwards {
         let ticket = format!("{TICKET_PREFIX}{}", generate_token());
         let mut map = self.tickets.lock().expect("forward lock");
         prune(&mut map, now);
+        make_room(&mut map, t.user_id, MAX_TICKETS_PER_USER);
         map.insert(
             hash_token(&ticket),
             Entry {
@@ -87,18 +122,7 @@ impl Forwards {
         let expires_at = now + CREDENTIAL_SECS;
         let mut map = self.credentials.lock().expect("forward lock");
         prune(&mut map, now);
-        let user = entry.target.user_id;
-        let mut mine: Vec<(String, i64)> = map
-            .iter()
-            .filter(|(_, e)| e.target.user_id == user)
-            .map(|(k, e)| (k.clone(), e.created_at))
-            .collect();
-        if mine.len() >= MAX_PER_USER {
-            mine.sort_by_key(|m| m.1);
-            for (k, _) in mine.iter().take(mine.len() + 1 - MAX_PER_USER) {
-                map.remove(k);
-            }
-        }
+        make_room(&mut map, entry.target.user_id, MAX_PER_USER);
         map.insert(
             hash_token(&credential),
             Entry {
@@ -178,6 +202,16 @@ mod tests {
         assert!(f.lookup(&creds[1], 20).is_some());
         let other = f.redeem(&f.mint(t(2), 0), 0).unwrap().0;
         assert!(f.lookup(&other, 20).is_some(), "other users unaffected");
+    }
+
+    #[test]
+    fn oldest_ticket_goes_past_the_per_user_limit() {
+        let f = Forwards::default();
+        let tickets: Vec<String> = (0..=MAX_TICKETS_PER_USER as i64)
+            .map(|i| f.mint(t(1), i))
+            .collect();
+        assert!(f.redeem(&tickets[0], 30).is_none());
+        assert!(f.redeem(&tickets[1], 30).is_some());
     }
 
     #[test]

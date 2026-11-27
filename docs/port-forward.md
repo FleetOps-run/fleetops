@@ -17,7 +17,7 @@ Reach a port inside a Kubernetes pod from your own machine, through FleetOps, so
    psql -h 127.0.0.1 -p 5432 -U app
    ```
 
-The link in the command works **once**, within **5 minutes**. Once `fleetops-cli` has used it, the forward lasts up to **8 hours** or until you press Ctrl-C. Each local connection (each `psql` session, each browser request) gets its own stream to the pod, and up to 16 can be open at once. If FleetOps restarts, the forward ends; create a new link.
+The link in the command works **once**, within **5 minutes**. A user can have up to 20 unused links and 10 running forwards; creating an 11th forward ends that user's oldest one. Once `fleetops-cli` has used it, the forward lasts up to **8 hours** or until you press Ctrl-C. Each local connection (each `psql` session, each browser request) gets its own stream to the pod, and up to 16 can be open at once. If FleetOps restarts, the forward ends; create a new link.
 
 ## Get fleetops-cli
 
@@ -40,7 +40,7 @@ fleetops-cli forward --server <URL> <link> [--local <port>] [--address <ip>] [--
 
 Port-forward needs **Shell** on pods in the pod's namespace, the same as the pod terminal: Operators, Admins, and custom roles with Shell on pods. Viewers don't see the button.
 
-Access is checked when the link is created, on every new connection, and every minute while a connection is open. If someone's access is removed or their account is disabled, new connections are refused at once and open ones close within a minute.
+Access is checked when the link is created, on every new connection, and every minute while a connection is open. If someone's access is removed, their account is disabled, or the environment is deleted, new connections are refused at once (and `fleetops-cli` stops), and open ones close within a minute. Renaming the environment keeps forwards working. A passing database or cluster error during the minute check does not close open connections.
 
 ## Audit
 
@@ -55,10 +55,10 @@ Each forward is written to the audit log as `k8s.port_forward`, with the pod and
 
 ## Behind a reverse proxy
 
-If FleetOps sits behind nginx, a load balancer or an ingress, the proxy must pass WebSocket upgrades (`Upgrade` and `Connection` headers) and the `x-fleetops-forward` header on `/api/v1/port-forward/stream`. FleetOps pings each forward every 25 seconds, so idle connections survive the usual 60-second proxy timeouts. Set `FLEETOPS_PUBLIC_URL` when FleetOps is served under a path or a different host, so the command in the dialog points at the right address.
+If FleetOps sits behind nginx, a load balancer or an ingress, the proxy must pass WebSocket upgrades (`Upgrade` and `Connection` headers) and the `x-fleetops-forward` header on `/api/v1/port-forward/stream`. FleetOps pings each forward every 25 seconds, so idle connections survive the usual 60-second proxy timeouts. Set `FLEETOPS_PUBLIC_URL` when people reach FleetOps at a different address than the one the browser shows (for example, a separate hostname for command-line access), so the command in the dialog points there.
 
 ## Security
 
-- The link is single-use and expires after 5 minutes. FleetOps keeps only hashes of links and session credentials, in memory.
+- The link is single-use and expires after 5 minutes. Redeeming is limited to 10 failed attempts per address every 5 minutes. FleetOps keeps only hashes of links and session credentials, in memory.
 - `fleetops-cli` sends its credential in a header that browsers cannot set, so a web page elsewhere cannot use your FleetOps session to open a forward.
 - Listening on `127.0.0.1` (the default) keeps the port to your machine. `--address 0.0.0.0` shares it with your network, so anyone who can reach your machine reaches the pod.

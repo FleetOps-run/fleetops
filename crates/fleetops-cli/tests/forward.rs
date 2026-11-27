@@ -31,6 +31,8 @@ struct Mock {
     /// Streams open now, and the most at once.
     active: Arc<AtomicUsize>,
     peak: Arc<AtomicUsize>,
+    /// expires_at in this machine's past, expires_in an hour.
+    skewed: bool,
     headers: Arc<Mutex<Vec<String>>>,
 }
 
@@ -43,9 +45,10 @@ async fn redeem(State(m): State<Mock>, Json(b): Json<serde_json::Value>) -> Resp
         )
             .into_response();
     }
+    let expires_at: i64 = if m.skewed { 1 } else { 4_102_444_800 };
     Json(
         json!({"credential": "fpc_test", "env": "prod", "namespace": "db", "pod": "postgres-0",
-        "port": 5432, "expires_at": 4_102_444_800i64}),
+        "port": 5432, "expires_at": expires_at, "expires_in": 3600}),
     )
     .into_response()
 }
@@ -226,4 +229,58 @@ async fn a_429_is_retried_not_dropped() {
     let (addr, stop, _task) = start(args(server)).await;
     assert_eq!(roundtrip(addr, b"later").await, b"pod|later");
     let _ = stop.send(());
+}
+
+#[tokio::test]
+async fn expiry_comes_from_the_server_not_the_local_clock() {
+    // A server whose expires_at is in this machine's past (clocks apart),
+    // but whose expires_in says an hour: the forward must keep running.
+    let m = Mock {
+        skewed: true,
+        ..Default::default()
+    };
+    let server = mock(m).await;
+    let (addr, stop, task) = start(args(server)).await;
+    assert_eq!(roundtrip(addr, b"skew").await, b"pod|skew");
+    assert!(!task.is_finished());
+    let _ = stop.send(());
+}
+
+#[tokio::test]
+async fn stopping_closes_open_connections() {
+    let m = Mock::default();
+    let server = mock(m).await;
+    let (addr, stop, task) = start(args(server)).await;
+    let mut c = TcpStream::connect(addr).await.unwrap();
+    c.write_all(b"held").await.unwrap();
+    let mut buf = vec![0u8; 8];
+    tokio::time::timeout(Duration::from_secs(5), c.read_exact(&mut buf))
+        .await
+        .unwrap()
+        .unwrap();
+    let _ = stop.send(());
+    tokio::time::timeout(Duration::from_secs(5), task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let n = tokio::time::timeout(Duration::from_secs(5), c.read(&mut buf))
+        .await
+        .expect("still open after stop")
+        .unwrap_or(0);
+    assert_eq!(n, 0);
+}
+
+#[test]
+fn the_text_frame_is_the_reason() {
+    use fleetops_cli::forward::close_reason;
+    assert_eq!(
+        close_reason(Some("the full story".into()), Some("the full st".into())),
+        Some("the full story".into())
+    );
+    assert_eq!(
+        close_reason(None, Some("short".into())),
+        Some("short".into())
+    );
+    assert_eq!(close_reason(None, None), None);
 }

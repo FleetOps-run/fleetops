@@ -449,7 +449,11 @@ impl KubeOps for FakeKube {
                     error:
                         Some(
                             async move {
-                                Some(format!("error forwarding port {port}: connection refused"))
+                                // As long as a real kubelet's message.
+                                Some(format!(
+                                    "error forwarding port {port} to pod {}, uid : failed to execute portforward in network namespace: failed to connect to localhost:{port}: connection refused",
+                                    "ab".repeat(32)
+                                ))
                             }
                             .boxed(),
                         ),

@@ -328,19 +328,22 @@ async fn a_refused_port_closes_with_the_reason() {
         .to_string();
     let addr = t.serve().await;
     let mut ws = stream(addr, Some(&cred), None).await.unwrap();
-    let mut reason = None;
+    // The full reason comes as text, then a (capped) close.
+    let (mut text, mut closed) = (None, false);
     while let Ok(Some(m)) = tokio::time::timeout(Duration::from_secs(5), ws.next()).await {
-        if let Ok(Message::Close(f)) = m {
-            reason = f.map(|f| f.reason.to_string());
-            break;
+        match m {
+            Ok(Message::Text(t)) => text = Some(t.to_string()),
+            Ok(Message::Close(_)) => {
+                closed = true;
+                break;
+            }
+            _ => {}
         }
     }
+    assert!(closed);
     assert!(
-        reason
-            .as_deref()
-            .unwrap_or("")
-            .contains("connection refused"),
-        "{reason:?}"
+        text.as_deref().unwrap_or("").contains("connection refused"),
+        "{text:?}"
     );
 }
 
@@ -358,4 +361,120 @@ async fn idle_streams_are_pinged() {
         .await
         .expect("nothing within 3s");
     assert!(matches!(got, Some(Ok(Message::Ping(_)))), "{got:?}");
+}
+
+#[tokio::test]
+async fn a_renamed_environment_keeps_working() {
+    let (t, admin, bob) = pf_app(Default::default()).await;
+    let cred = credential(&t, &bob).await;
+    let r = t
+        .send(req(
+            "PATCH",
+            "/api/v1/envs/k",
+            Some(json!({"name": "k2", "skip_check": true})),
+            Some(&admin),
+        ))
+        .await;
+    assert_eq!(r.status, 200, "{:?}", r.json);
+    let addr = t.serve().await;
+    let mut ws = stream(addr, Some(&cred), None).await.unwrap();
+    echo(&mut ws, "z", "postgres-0:5432|z".len()).await;
+}
+
+#[tokio::test]
+async fn a_deleted_environment_ends_the_link() {
+    let (t, admin, bob) = pf_app(Default::default()).await;
+    let cred = credential(&t, &bob).await;
+    let r = t
+        .send(req("DELETE", "/api/v1/envs/k", None, Some(&admin)))
+        .await;
+    assert!(
+        r.status == 200 || r.status == 204,
+        "{} {:?}",
+        r.status,
+        r.json
+    );
+    let addr = t.serve().await;
+    // 403, not 404: fleetops-cli stops instead of retrying for hours.
+    assert_eq!(stream(addr, Some(&cred), None).await.err(), Some(403));
+}
+
+#[tokio::test]
+async fn the_slot_check_comes_before_the_database() {
+    let (t, admin, bob) = pf_app(Default::default()).await;
+    let cred = credential(&t, &bob).await;
+    let addr = t.serve().await;
+    let mut open = Vec::new();
+    for _ in 0..16 {
+        open.push(stream(addr, Some(&cred), None).await.unwrap());
+    }
+    let bob_id = t.store.find_credentials("bob").await.unwrap().unwrap().0.id;
+    t.send(req(
+        "PATCH",
+        &format!("/api/v1/users/{bob_id}"),
+        Some(json!({"disabled": true})),
+        Some(&admin),
+    ))
+    .await;
+    // Full: refused before any user or grant lookup.
+    assert_eq!(stream(addr, Some(&cred), None).await.err(), Some(429));
+}
+
+#[tokio::test]
+async fn redeem_reports_expires_in() {
+    let (t, _, bob) = pf_app(Default::default()).await;
+    let r = redeem(&t, &ticket(&t, &bob).await).await;
+    assert_eq!(r.json["expires_in"], 8 * 3600, "{:?}", r.json);
+}
+
+#[tokio::test]
+async fn redeem_is_rate_limited_per_address() {
+    let (t, _, bob) = pf_app(Default::default()).await;
+    let mut statuses = Vec::new();
+    for _ in 0..12 {
+        statuses.push(redeem(&t, "fpt_guess").await.status);
+    }
+    assert_eq!(&statuses[..10], &[401; 10], "{statuses:?}");
+    assert_eq!(statuses[10], 429, "{statuses:?}");
+    // A good ticket from the same address is refused too until the window passes.
+    let good = ticket(&t, &bob).await;
+    assert_eq!(redeem(&t, &good).await.status, 429);
+}
+
+#[tokio::test]
+async fn the_full_reason_arrives_before_the_close() {
+    let (t, admin, _) = pf_app(Default::default()).await;
+    t.fake.kube.object(KubeKind::Pods, "apps", "refused");
+    let r = t
+        .send(req(
+            "POST",
+            "/api/v1/envs/k/k8s/pods/apps/refused/port-forward",
+            Some(json!({"port": 81})),
+            Some(&admin),
+        ))
+        .await;
+    let cred = redeem(&t, r.json["ticket"].as_str().unwrap()).await.json["credential"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let addr = t.serve().await;
+    let mut ws = stream(addr, Some(&cred), None).await.unwrap();
+    let (mut text, mut close) = (None, None);
+    while let Ok(Some(Ok(m))) = tokio::time::timeout(Duration::from_secs(5), ws.next()).await {
+        match m {
+            Message::Text(s) => text = Some(s.to_string()),
+            Message::Close(f) => {
+                close = f.map(|f| f.reason.to_string());
+                break;
+            }
+            _ => {}
+        }
+    }
+    let text = text.expect("the full reason as text");
+    assert!(
+        text.len() > 123 && text.ends_with("connection refused"),
+        "{text}"
+    );
+    let close = close.unwrap();
+    assert!(close.len() <= 123, "{} bytes", close.len());
 }

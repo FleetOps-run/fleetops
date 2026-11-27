@@ -42,7 +42,11 @@ struct Redeemed {
     namespace: String,
     pod: String,
     port: u16,
+    /// The server's clock; only a fallback for `expires_in`.
     expires_at: i64,
+    /// Seconds the link lasts (older servers do not send it).
+    #[serde(default)]
+    expires_in: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -140,6 +144,8 @@ pub async fn run_with(
         .json()
         .await
         .context("unexpected answer from the server")?;
+    // The server's count, so a skewed local clock cannot end it early.
+    let lasts_for = r.expires_in.unwrap_or_else(|| r.expires_at - now());
 
     let listener = TcpListener::bind((args.address, local_port(args.local, r.port)))
         .await
@@ -157,7 +163,7 @@ pub async fn run_with(
         r.namespace,
         r.pod,
         r.port,
-        lasts(r.expires_at - now())
+        lasts(lasts_for)
     );
     if let Some(tx) = ready {
         let _ = tx.send(local);
@@ -170,7 +176,9 @@ pub async fn run_with(
     );
     let slots = Arc::new(Semaphore::new(MAX_STREAMS));
     let (fatal_tx, mut fatal) = mpsc::channel::<String>(1);
-    let expiry = tokio::time::sleep(Duration::from_secs((r.expires_at - now()).max(0) as u64));
+    let expiry = tokio::time::sleep(Duration::from_secs(lasts_for.max(0) as u64));
+    // Connections in flight; dropping the set when this returns ends them.
+    let mut conns = tokio::task::JoinSet::new();
     tokio::pin!(expiry, shutdown);
     let cred = Arc::new(r.credential);
     loop {
@@ -198,7 +206,8 @@ pub async fn run_with(
             }
         };
         let (url, cred, tls, fatal) = (ws_url.clone(), cred.clone(), tls.clone(), fatal_tx.clone());
-        tokio::spawn(async move {
+        while conns.try_join_next().is_some() {}
+        conns.spawn(async move {
             let _slot = slot;
             if let Err(e) = carry(conn, &url, &cred, tls).await {
                 match e {
@@ -304,6 +313,7 @@ async fn carry(
     let (mut local_r, mut local_w) = conn.into_split();
     let mut buf = vec![0u8; 32 * 1024];
     let mut local_done = false;
+    let mut text: Option<String> = None;
     loop {
         tokio::select! {
             n = local_r.read(&mut buf), if !local_done => match n {
@@ -327,18 +337,20 @@ async fn carry(
                         return Ok(());
                     }
                 }
+                // A failure's whole reason comes as text before the close,
+                // whose own reason is capped at 123 bytes.
+                Some(Ok(Message::Text(t))) => text = Some(t.to_string()),
                 Some(Ok(Message::Close(frame))) => {
                     let _ = local_w.shutdown().await;
-                    return match frame {
-                        Some(f) if f.code != CloseCode::Normal && !f.reason.is_empty() => {
-                            let reason = f.reason.to_string();
-                            if f.code == CloseCode::Policy {
-                                Err(Carry::Fatal(reason))
-                            } else {
-                                Err(Carry::Once(reason))
-                            }
-                        }
-                        _ => Ok(()),
+                    let Some(f) = frame.filter(|f| f.code != CloseCode::Normal) else {
+                        return Ok(());
+                    };
+                    let policy = f.code == CloseCode::Policy;
+                    let short = Some(f.reason.to_string()).filter(|r| !r.is_empty());
+                    return match close_reason(text, short) {
+                        Some(reason) if policy => Err(Carry::Fatal(reason)),
+                        Some(reason) => Err(Carry::Once(reason)),
+                        None => Ok(()),
                     };
                 }
                 None | Some(Err(_)) => {
@@ -350,4 +362,10 @@ async fn carry(
             },
         }
     }
+}
+
+/// Why the server closed a stream: its text message (the whole reason)
+/// over the close frame's reason (capped at 123 bytes).
+pub fn close_reason(text: Option<String>, close: Option<String>) -> Option<String> {
+    text.or(close)
 }
