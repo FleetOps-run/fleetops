@@ -186,7 +186,7 @@ There is one image, `fleets/fleetops`. Every install starts on Community. Buy a 
 | Scheduled backups (S3, local directory) | | ✓ |
 | Image vulnerability scanning (Trivy) with a fleet-wide patch queue | | ✓ |
 | Notifications: Slack, email, Microsoft Teams, Discord, PagerDuty, webhooks | | ✓ |
-| API tokens | | planned |
+| API tokens for CI and scripts, audited by name | | ✓ |
 
 Enterprise is for paying customers only: there is no free tier or trial license, since Community is already free on any number of nodes. FleetOps runs as Community until a license is installed: upload it in **Admin → License**, or start the server with `--license-file` / `FLEETOPS_LICENSE_FILE`. Licenses are checked offline. After expiry, Enterprise features keep working for 14 days, then turn off; Community features and data are never affected. A license covers a number of nodes: each Docker or Podman host is one, and a Kubernetes cluster counts its nodes. At the limit, new environments are refused; a cluster that grows past it only warns admins. Users are never limited.
 
@@ -205,6 +205,8 @@ Scheduled backups come with any Enterprise license (see [Moving or recovering a 
 Image vulnerability scanning comes with any Enterprise license. It is off until an admin turns it on in **Admin → Security scanning**, for every environment or one at a time; turning it on pulls the [Trivy](https://trivy.dev) image and its vulnerability database. FleetOps then scans each image when it arrives and once a day, and **Security** in the sidebar lists every image across the fleet with fixable critical vulnerabilities on running containers first. Air-gapped environments can use a mirror. See [docs/security-scanning.md](docs/security-scanning.md).
 
 Notifications come with any Enterprise license too: in **Admin → Notifications**, rules send new CVEs on the images you run to Slack, email (SMTP, including Amazon SES), Microsoft Teams, Discord, PagerDuty or a webhook. One message per CVE, listing every affected image; rebuilds that still carry a known CVE stay quiet. See [docs/notifications.md](docs/notifications.md).
+
+API tokens come with any Enterprise license as well. Each user creates their own on the **Account** page; a token acts as its owner over `Authorization: Bearer fo_…`, can be read-only and can expire, and every action it takes is in the audit log under its name. Admins see and revoke every token in **Admin → API tokens**. See [docs/api-tokens.md](docs/api-tokens.md).
 
 Everything outside `ee/` is Apache-2.0. The `ee/` directory is source-available: you may read, modify and test it, and run official builds for free on the Community plan, production included; using the Enterprise features in production needs a subscription. `make build` builds the one server, Enterprise code included; it runs as Community until a license is installed.
 
