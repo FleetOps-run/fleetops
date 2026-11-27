@@ -1,7 +1,7 @@
 //! Agent environments: enrollment tokens, the docker run command, and the
 //! status updates the connect handler publishes (sub-project 2).
 
-mod axum_io;
+pub(crate) mod axum_io;
 pub mod connect;
 pub mod manifest;
 mod swarm_connect;

@@ -10,6 +10,7 @@ pub mod envs;
 pub mod error;
 pub mod external;
 pub mod extract;
+pub mod forward;
 mod headers;
 pub mod openapi;
 mod request_id;

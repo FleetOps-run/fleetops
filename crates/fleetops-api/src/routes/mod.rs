@@ -8,6 +8,7 @@ pub mod envs;
 pub(crate) mod helm;
 pub(crate) mod kube;
 pub(crate) mod kube_generic;
+pub mod port_forward;
 pub mod stack_hooks;
 pub mod swarm;
 pub mod swarm_agents;
@@ -58,6 +59,9 @@ pub fn api() -> OpenApiRouter<AppState> {
         .routes(routes!(access::set, access::revoke))
         .routes(routes!(audit_log::list))
         .routes(routes!(crate::ws::handler))
+        .routes(routes!(port_forward::redeem))
+        .routes(routes!(port_forward::stream))
+        .routes(routes!(port_forward::mint))
         .routes(routes!(crate::agents::connect::handler))
         .routes(routes!(tasks::get))
         .routes(routes!(stack_hooks::hook).layer(DefaultBodyLimit::max(stack_hooks::HOOK_BODY_MAX)))
