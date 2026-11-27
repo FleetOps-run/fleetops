@@ -17903,6 +17903,7 @@
         "type": "object",
         "required": [
           "credential",
+          "expires_in",
           "env",
           "namespace",
           "pod",
@@ -17920,6 +17921,11 @@
           "expires_at": {
             "type": "integer",
             "format": "int64"
+          },
+          "expires_in": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Seconds the credential lasts; clients use this, not their own clock."
           },
           "namespace": {
             "type": "string"

@@ -2016,6 +2016,10 @@ export type Redeemed = {
     credential: string;
     env: string;
     expires_at: number;
+    /**
+     * Seconds the credential lasts; clients use this, not their own clock.
+     */
+    expires_in: number;
     namespace: string;
     pod: string;
     port: number;
