@@ -342,10 +342,10 @@ async fn export_csv_and_ndjson_with_range() {
     let lines: Vec<&str> = r.text.lines().collect();
     assert_eq!(
         lines[0],
-        "id,ts,user_id,username,environment_id,action,target_type,target_id,result,detail"
+        "id,ts,user_id,username,token_name,environment_id,action,target_type,target_id,result,detail"
     );
     assert_eq!(lines.len(), 2, "{}", r.text);
-    assert!(lines[1].contains(",200,,,,container.stop,container,web,success,"));
+    assert!(lines[1].contains(",200,,,,,container.stop,container,web,success,"));
     let r = ee
         .send(
             "GET",

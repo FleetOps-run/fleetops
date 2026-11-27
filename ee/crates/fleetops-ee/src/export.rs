@@ -9,7 +9,7 @@ use utoipa::ToSchema;
 
 const PAGE: i64 = 1000;
 pub const CSV_HEADER: &str =
-    "id,ts,user_id,username,environment_id,action,target_type,target_id,result,detail\n";
+    "id,ts,user_id,username,token_name,environment_id,action,target_type,target_id,result,detail\n";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, ToSchema, Default)]
 #[serde(rename_all = "lowercase")]
@@ -66,6 +66,7 @@ fn write_row(out: &mut String, format: Format, e: &AuditEntry) {
                 e.ts.to_string(),
                 opt(e.user_id),
                 e.username.clone().unwrap_or_default(),
+                e.token_name.clone().unwrap_or_default(),
                 opt(e.environment_id),
                 e.action.clone(),
                 e.target_type.clone().unwrap_or_default(),
