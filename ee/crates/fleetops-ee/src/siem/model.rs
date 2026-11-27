@@ -47,8 +47,6 @@ pub struct SinkSettings {
     pub transport: Option<SyslogTransport>,
     /// Syslog over TLS: an extra CA to trust (PEM), beside the public roots.
     pub ca_pem: Option<String>,
-    /// Splunk HEC and HTTP.
-    pub url: Option<String>,
     /// HTTP: the names of the headers sent; their values are secrets.
     #[serde(default)]
     pub header_names: Vec<String>,
@@ -57,6 +55,9 @@ pub struct SinkSettings {
 /// A sink's secrets, sealed at rest and never returned.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SinkSecrets {
+    /// Splunk HEC and HTTP: collectors often carry a token in the URL.
+    #[serde(default)]
+    pub url: Option<String>,
     /// Splunk HEC token.
     pub token: Option<String>,
     /// HTTP headers, as `(name, value)`.

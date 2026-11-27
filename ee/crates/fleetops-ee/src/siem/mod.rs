@@ -32,6 +32,11 @@ pub fn validate_name(name: &str) -> Result<String> {
 fn check_url(url: Option<&str>) -> Result<()> {
     let url = url.ok_or_else(|| invalid("a URL is required"))?;
     let u = url::Url::parse(url).map_err(|_| invalid("the URL is not valid"))?;
+    if !u.username().is_empty() || u.password().is_some() {
+        return Err(invalid(
+            "put credentials in a header or token, not in the URL",
+        ));
+    }
     let loopback = match u.host() {
         Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
         Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
@@ -75,13 +80,13 @@ pub fn validate(kind: SinkKind, set: &SinkSettings, sec: &SinkSecrets) -> Result
             }
         }
         SinkKind::SplunkHec => {
-            check_url(set.url.as_deref())?;
+            check_url(sec.url.as_deref())?;
             if sec.token.as_deref().unwrap_or("").trim().is_empty() {
                 return Err(invalid("Splunk HEC needs a token"));
             }
         }
         SinkKind::Http => {
-            check_url(set.url.as_deref())?;
+            check_url(sec.url.as_deref())?;
             for (name, _) in &sec.headers {
                 if !is_token(name) {
                     return Err(invalid(format!("'{name}' is not a valid header name")));

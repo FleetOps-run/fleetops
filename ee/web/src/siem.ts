@@ -20,6 +20,7 @@ export const retentionQuery = queryOptions({
 export const createSink = (b: SinkBody) => apiFetch<SinkView>(`${BASE}/sinks`, json("POST", b));
 export const updateSink = (id: number, b: SinkBody) => apiFetch<SinkView>(`${BASE}/sinks/${id}`, json("PUT", b));
 export const deleteSink = (id: number) => apiFetch<void>(`${BASE}/sinks/${id}`, { method: "DELETE" });
+export const skipSink = (id: number) => apiFetch<SinkView>(`${BASE}/sinks/${id}/skip`, { method: "POST" });
 export const testSink = (id: number) => apiFetch<void>(`${BASE}/sinks/${id}/test`, { method: "POST" });
 export const putRetention = (days: number) => apiFetch<Retention>(`${BASE}/retention`, json("PUT", { days }));
 

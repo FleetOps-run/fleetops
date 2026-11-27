@@ -138,6 +138,9 @@ pub async fn update(
     now: i64,
 ) -> Result<()> {
     let settings = serde_json::to_string(settings).map_err(json_err)?;
+    // One transaction, so the forwarder never pairs new settings with old
+    // secrets (and sends a token to a host it was not meant for).
+    let mut tx = store.pool().begin().await.map_err(db_err)?;
     let res = sqlx::query(
         "UPDATE ee_audit_sinks SET name = ?, enabled = ?, settings = ?, updated_at = ?
          WHERE id = ?",
@@ -147,7 +150,7 @@ pub async fn update(
     .bind(settings)
     .bind(now)
     .bind(id)
-    .execute(store.pool())
+    .execute(&mut *tx)
     .await
     .map_err(db_err)?;
     if res.rows_affected() == 0 {
@@ -157,10 +160,11 @@ pub async fn update(
         sqlx::query("UPDATE ee_audit_sinks SET secrets = ? WHERE id = ?")
             .bind(seal(store, id, s)?)
             .bind(id)
-            .execute(store.pool())
+            .execute(&mut *tx)
             .await
             .map_err(db_err)?;
     }
+    tx.commit().await.map_err(db_err)?;
     Ok(())
 }
 
@@ -188,6 +192,23 @@ pub async fn advance(store: &Store, id: i64, cursor: i64, gap_add: i64, now: i64
     .bind(gap_add)
     .bind(now)
     .bind(id)
+    .execute(store.pool())
+    .await
+    .map_err(db_err)?;
+    Ok(())
+}
+
+/// Moves the cursor to `cursor` without sending, counting what was skipped.
+pub async fn skip(store: &Store, id: i64, cursor: i64, skipped: i64) -> Result<()> {
+    sqlx::query(
+        "UPDATE ee_audit_sinks SET cursor = ?, gap_rows = gap_rows + ?,
+             last_error = NULL, last_error_at = NULL
+         WHERE id = ? AND cursor < ?",
+    )
+    .bind(cursor)
+    .bind(skipped)
+    .bind(id)
+    .bind(cursor)
     .execute(store.pool())
     .await
     .map_err(db_err)?;

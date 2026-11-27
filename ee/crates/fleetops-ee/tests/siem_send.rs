@@ -141,14 +141,9 @@ async fn server(status: StatusCode) -> (String, Seen) {
 #[tokio::test]
 async fn hec_sends_token_and_one_event_per_line() {
     let (url, seen) = server(StatusCode::OK).await;
-    let s = sink(
-        SinkKind::SplunkHec,
-        SinkSettings {
-            url: Some(url),
-            ..Default::default()
-        },
-    );
+    let s = sink(SinkKind::SplunkHec, SinkSettings::default());
     let sec = SinkSecrets {
+        url: Some(url),
         token: Some("t0ken".into()),
         headers: vec![],
     };
@@ -171,14 +166,9 @@ async fn hec_sends_token_and_one_event_per_line() {
 #[tokio::test]
 async fn hec_failure_names_only_the_host() {
     let (url, _) = server(StatusCode::FORBIDDEN).await;
-    let s = sink(
-        SinkKind::SplunkHec,
-        SinkSettings {
-            url: Some(url),
-            ..Default::default()
-        },
-    );
+    let s = sink(SinkKind::SplunkHec, SinkSettings::default());
     let sec = SinkSecrets {
+        url: Some(url),
         token: Some("t0ken".into()),
         headers: vec![],
     };
@@ -200,12 +190,12 @@ async fn http_sends_a_json_array_with_custom_headers() {
     let s = sink(
         SinkKind::Http,
         SinkSettings {
-            url: Some(url),
             header_names: vec!["DD-API-KEY".into()],
             ..Default::default()
         },
     );
     let sec = SinkSecrets {
+        url: Some(url),
         token: None,
         headers: vec![("DD-API-KEY".into(), "k3y".into())],
     };
@@ -289,4 +279,54 @@ async fn tls_refuses_an_unknown_certificate() {
         .unwrap_err()
         .to_string();
     assert!(e.contains("TLS handshake"), "{e}");
+}
+
+#[tokio::test]
+async fn oversized_rows_are_truncated_for_syslog() {
+    let sock = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+    let port = sock.local_addr().unwrap().port();
+    let big = row(1, json!({"blob": "x".repeat(100_000)}));
+    LiveSender::default()
+        .send(
+            &syslog(port, SyslogTransport::Udp),
+            &SinkSecrets::default(),
+            &[big],
+        )
+        .await
+        .unwrap();
+    let mut buf = vec![0u8; 65_536];
+    let n = sock.recv(&mut buf).await.unwrap();
+    let msg = std::str::from_utf8(&buf[..n]).unwrap();
+    assert!(n <= 8192, "{n} bytes");
+    assert!(msg.contains("\"truncated\":true"), "{msg}");
+    assert!(msg.contains("\"action\":\"container.stop\""), "{msg}");
+}
+
+#[tokio::test]
+async fn secrets_are_scrubbed_before_the_error_is_cut() {
+    let token = "t0ken-secret-value";
+    let app = Router::new().route(
+        "/in",
+        post(move || async move {
+            (
+                StatusCode::BAD_REQUEST,
+                format!("{}{token}", "x".repeat(290)),
+            )
+        }),
+    );
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = l.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+    let s = sink(SinkKind::SplunkHec, SinkSettings::default());
+    let sec = SinkSecrets {
+        token: Some(token.into()),
+        url: Some(format!("http://{addr}/in")),
+        headers: vec![],
+    };
+    let e = LiveSender::default()
+        .send(&s, &sec, &[row(1, json!({}))])
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(!e.contains("t0ken-s"), "{e}");
 }

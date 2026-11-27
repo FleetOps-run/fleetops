@@ -80,6 +80,64 @@ impl Forwarder {
         b.insert(id, (now + delay, (delay * 2).min(MAX_DELAY)));
     }
 
+    /// Forgets a deleted sink's backoff.
+    pub fn forget(&self, id: i64) {
+        self.backoff.lock().expect("backoff lock").remove(&id);
+    }
+
+    /// Sends one sink's backlog, up to [`MAX_BATCHES_PER_TICK`] batches. The
+    /// sink is read again before every batch, so an edit applies to the next
+    /// batch and a delete or disable stops it.
+    async fn drain(&self, s: &AppState, id: i64, now: i64) -> Result<()> {
+        for _ in 0..MAX_BATCHES_PER_TICK {
+            let (sink, secrets) = match db::get(&s.store, id).await {
+                Ok(x) => x,
+                Err(fleetops_core::Error::NotFound(_)) => return Ok(()),
+                Err(e) => {
+                    db::fail(&s.store, id, &e.to_string(), now).await?;
+                    self.failed(id, now);
+                    return Ok(());
+                }
+            };
+            if !sink.enabled {
+                return Ok(());
+            }
+            let rows = match s.store.audit_range(None, None, sink.cursor, BATCH).await {
+                Ok(r) => r,
+                Err(e) => {
+                    db::fail(&s.store, id, &e.to_string(), now).await?;
+                    self.failed(id, now);
+                    return Ok(());
+                }
+            };
+            let Some(last) = rows.last().map(|r| r.id) else {
+                return Ok(());
+            };
+            // Rows are only ever removed oldest first, so a hole after the
+            // cursor is rows retention took before this sink sent them.
+            let gap = (rows[0].id - sink.cursor - 1).max(0);
+            match self.sender.send(&sink, &secrets, &rows).await {
+                Ok(()) => {
+                    db::advance(&s.store, id, last, gap, now).await?;
+                    self.succeeded(id);
+                }
+                Err(e) => {
+                    let msg = match e {
+                        fleetops_core::Error::Upstream { message, .. } => message,
+                        other => other.to_string(),
+                    };
+                    db::fail(&s.store, id, &msg, now).await?;
+                    self.failed(id, now);
+                    return Ok(());
+                }
+            }
+            if (rows.len() as i64) < BATCH {
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
+
     fn succeeded(&self, id: i64) {
         self.backoff.lock().expect("backoff lock").remove(&id);
     }
@@ -95,44 +153,7 @@ impl Forwarder {
             if !sink.enabled || !self.due(sink.id, now) {
                 continue;
             }
-            // Fresh settings and secrets each pass, so edits apply at once.
-            let (sink, secrets) = match db::get(&s.store, sink.id).await {
-                Ok(x) => x,
-                Err(e) => {
-                    db::fail(&s.store, sink.id, &e.to_string(), now).await?;
-                    self.failed(sink.id, now);
-                    continue;
-                }
-            };
-            let mut cursor = sink.cursor;
-            for _ in 0..MAX_BATCHES_PER_TICK {
-                let rows = s.store.audit_range(None, None, cursor, BATCH).await?;
-                let Some(last) = rows.last().map(|r| r.id) else {
-                    break;
-                };
-                // Rows are only ever removed oldest first, so a hole after
-                // the cursor is rows retention took before this sink sent them.
-                let gap = (rows[0].id - cursor - 1).max(0);
-                match self.sender.send(&sink, &secrets, &rows).await {
-                    Ok(()) => {
-                        db::advance(&s.store, sink.id, last, gap, now).await?;
-                        self.succeeded(sink.id);
-                        cursor = last;
-                    }
-                    Err(e) => {
-                        let msg = match e {
-                            fleetops_core::Error::Upstream { message, .. } => message,
-                            other => other.to_string(),
-                        };
-                        db::fail(&s.store, sink.id, &msg, now).await?;
-                        self.failed(sink.id, now);
-                        break;
-                    }
-                }
-                if (rows.len() as i64) < BATCH {
-                    break;
-                }
-            }
+            self.drain(s, sink.id, now).await?;
         }
         Ok(())
     }

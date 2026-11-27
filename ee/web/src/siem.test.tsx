@@ -14,7 +14,7 @@ const sink = (over: Partial<SinkView> = {}): SinkView => ({
   enabled: true,
   target: "splunk.example",
   transport: null,
-  url: "https://splunk.example:8088/services/collector/event",
+  url_set: true,
   header_names: [],
   token_set: true,
   ca_set: false,
@@ -109,6 +109,31 @@ describe("audit forwarding", () => {
     expect(within(d).queryByLabelText("Start from")).toBeNull();
     await userEvent.click(within(d).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(calls.find((c) => c.method === "PUT")?.body).toMatchObject({ name: "splunk", token: "" }));
+  });
+
+  it("hides a stored URL and keeps it when left blank", async () => {
+    mockFetch(routes([sink()]));
+    renderApp("/admin/audit-forwarding");
+    const t = await table();
+    await userEvent.click(within(t).getByRole("button", { name: "Edit splunk" }));
+    const d = await screen.findByRole("dialog", { name: "Edit splunk" });
+    const url = within(d).getByLabelText("HEC URL");
+    expect(url).toHaveValue("");
+    expect(url).toHaveAttribute("placeholder", "Leave blank to keep the current URL");
+  });
+
+  it("skips a stuck sink to now after asking", async () => {
+    const calls = mockFetch(
+      routes([sink({ last_error: "answered 413 (splunk.example): too large", last_error_at: 1_790_000_100, behind: 7 })], {
+        [`POST ${BASE}/1/skip`]: { json: sink({ gap_rows: 7 }) },
+      }),
+    );
+    renderApp("/admin/audit-forwarding");
+    const t = await table();
+    await userEvent.click(within(t).getByRole("button", { name: "Skip splunk to now" }));
+    const d = await screen.findByRole("dialog", { name: "Skip 7 entries for splunk?" });
+    await userEvent.click(within(d).getByRole("button", { name: "Skip" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === `${BASE}/1/skip`)).toBe(true));
   });
 
   it("sends a test", async () => {

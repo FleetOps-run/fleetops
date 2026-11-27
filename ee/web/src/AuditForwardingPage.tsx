@@ -22,6 +22,7 @@ import {
   createSink,
   deleteSink,
   progress,
+  skipSink,
   putRetention,
   retentionQuery,
   siemKeys,
@@ -61,7 +62,9 @@ function SinkDialog({ sink, onClose }: { sink?: SinkView; onClose: () => void })
   const [port, setPort] = useState(sink?.kind === "syslog" ? (sink.target.split(":")[1] ?? "514") : "514");
   const [transport, setTransport] = useState<SyslogTransport>(sink?.transport ?? "udp");
   const [ca, setCa] = useState("");
-  const [url, setUrl] = useState(sink?.url ?? "");
+  // The URL is a secret: never shown, blank keeps it.
+  const [url, setUrl] = useState("");
+  const urlHint = sink?.url_set ? "Leave blank to keep the current URL" : undefined;
   const [token, setToken] = useState("");
   const [headers, setHeaders] = useState<Header[]>(sink?.header_names.map((n) => ({ name: n, value: "" })) ?? []);
   const [start, setStart] = useState<"now" | "all">("now");
@@ -139,7 +142,7 @@ function SinkDialog({ sink, onClose }: { sink?: SinkView; onClose: () => void })
       {kind === "splunk_hec" && (
         <>
           <Field id="sink-url" label="HEC URL">
-            <Input id="sink-url" className="font-ident" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://splunk.example.com:8088/services/collector/event" />
+            <Input id="sink-url" className="font-ident" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={urlHint ?? "https://splunk.example.com:8088/services/collector/event"} />
           </Field>
           <Field id="sink-token" label="HEC token">
             <Input
@@ -156,7 +159,7 @@ function SinkDialog({ sink, onClose }: { sink?: SinkView; onClose: () => void })
       {kind === "http" && (
         <>
           <Field id="sink-url" label="URL">
-            <Input id="sink-url" className="font-ident" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://http-intake.logs.datadoghq.com/api/v2/logs" />
+            <Input id="sink-url" className="font-ident" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={urlHint ?? "https://http-intake.logs.datadoghq.com/api/v2/logs"} />
           </Field>
           <div className="grid gap-2">
             <span className="text-sm font-medium">Headers</span>
@@ -203,6 +206,7 @@ function SinkRow({ s, licensed }: { s: SinkView; licensed: boolean }) {
   const invalidate = useInvalidate();
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [skipping, setSkipping] = useState(false);
   const test = useMutation({
     mutationFn: () => testSink(s.id),
     onSuccess: () => toast.success(`Sent a test to ${s.name}`),
@@ -236,12 +240,26 @@ function SinkRow({ s, licensed }: { s: SinkView; licensed: boolean }) {
             <Button size="sm" variant="outline" aria-label={`Edit ${s.name}`} onClick={() => setEditing(true)}>
               Edit
             </Button>
+            {s.last_error && s.behind > 0 && (
+              <Button size="sm" variant="outline" aria-label={`Skip ${s.name} to now`} onClick={() => setSkipping(true)}>
+                Skip to now
+              </Button>
+            )}
           </>
         )}
         <Button size="sm" variant="ghost" aria-label={`Delete ${s.name}`} onClick={() => setDeleting(true)}>
           <Trash2 aria-hidden />
         </Button>
         {editing && <SinkDialog sink={s} onClose={() => setEditing(false)} />}
+        <ConfirmDialog
+          open={skipping}
+          onOpenChange={setSkipping}
+          title={`Skip ${s.behind} entries for ${s.name}?`}
+          description="Use this when the receiver keeps refusing an entry. The skipped entries are never sent here and are counted as a gap; they stay in the audit log."
+          confirmLabel="Skip"
+          destructive
+          onConfirm={() => skipSink(s.id).then(invalidate)}
+        />
         <ConfirmDialog
           open={deleting}
           onOpenChange={setDeleting}

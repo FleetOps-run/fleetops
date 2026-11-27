@@ -356,3 +356,122 @@ async fn retention_round_trip_and_bounds() {
         .await
         .contains(&"audit.retention.update".to_string()));
 }
+
+const PEM: &str = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n";
+
+async fn put_ca(f: &Fx, id: i64, ca: Value) -> Resp {
+    let mut b = json!({"name": "rsyslog", "kind": "syslog", "host": "siem.lan", "port": 6514, "transport": "tls", "enabled": false});
+    if !ca.is_null() {
+        b["ca_pem"] = ca;
+    }
+    f.ee.send("PUT", &format!("{BASE}/{id}"), body(b), Some(&f.admin))
+        .await
+}
+
+#[tokio::test]
+async fn editing_keeps_the_ca_unless_cleared() {
+    let f = fx().await;
+    let r = create(
+        &f,
+        json!({"name": "rsyslog", "kind": "syslog", "host": "siem.lan", "port": 6514, "transport": "tls", "ca_pem": PEM}),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::CREATED, "{}", r.text);
+    let id = r.json()["id"].as_i64().unwrap();
+    assert_eq!(put_ca(&f, id, Value::Null).await.status, StatusCode::OK);
+    let ca = |s: &fleetops_ee::siem::model::Sink| s.settings.ca_pem.clone();
+    assert_eq!(
+        ca(&fleetops_ee::siem::db::get(&f.ee.store, id).await.unwrap().0).as_deref(),
+        Some(PEM.trim())
+    );
+    assert_eq!(put_ca(&f, id, json!("")).await.status, StatusCode::OK);
+    assert_eq!(
+        ca(&fleetops_ee::siem::db::get(&f.ee.store, id).await.unwrap().0),
+        None
+    );
+}
+
+#[tokio::test]
+async fn the_url_is_a_secret() {
+    let f = fx().await;
+    let url = "https://collectors.example/receiver/v1/http/SECRETPATH?k=q";
+    let r = create(&f, json!({"name": "sumo", "kind": "http", "url": url})).await;
+    assert_eq!(r.status, StatusCode::CREATED, "{}", r.text);
+    let id = r.json()["id"].as_i64().unwrap();
+    assert_eq!(r.json()["target"], "collectors.example");
+    assert_eq!(r.json()["url_set"], true);
+    let list = f.ee.send("GET", BASE, None, Some(&f.admin)).await;
+    assert!(!list.text.contains("SECRETPATH"), "{}", list.text);
+    let raw: String = sqlx::query_scalar("SELECT settings FROM ee_audit_sinks WHERE id = ?")
+        .bind(id)
+        .fetch_one(f.ee.store.pool())
+        .await
+        .unwrap();
+    assert!(!raw.contains("SECRETPATH"), "stored in the clear: {raw}");
+    // A blank URL keeps the stored one.
+    let r =
+        f.ee.send(
+            "PUT",
+            &format!("{BASE}/{id}"),
+            body(json!({"name": "sumo", "kind": "http", "url": ""})),
+            Some(&f.admin),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text);
+    let (_, sec) = fleetops_ee::siem::db::get(&f.ee.store, id).await.unwrap();
+    assert_eq!(sec.url.as_deref(), Some(url));
+    let creds = create(
+        &f,
+        json!({"name": "u", "kind": "http", "url": "https://user:pw@logs.example/in"}),
+    )
+    .await;
+    assert_eq!(creds.status, StatusCode::BAD_REQUEST, "{}", creds.text);
+}
+
+#[tokio::test]
+async fn start_all_reports_no_gap_for_rows_pruned_before_it_existed() {
+    let f = fx().await;
+    let newest = f.ee.store.list_audit(1, None).await.unwrap()[0].id;
+    sqlx::query("DELETE FROM audit_log WHERE id < ?")
+        .bind(newest)
+        .execute(f.ee.store.pool())
+        .await
+        .unwrap();
+    let mut all = hec("all");
+    all["start"] = json!("all");
+    let id = create(&f, all).await.json()["id"].as_i64().unwrap();
+    f.ee.forwarder.tick(&f.ee.state, now_unix()).await.unwrap();
+    let sink = fleetops_ee::siem::db::get(&f.ee.store, id).await.unwrap().0;
+    assert_eq!(sink.gap_rows, 0);
+    assert!(sink.cursor > newest);
+}
+
+#[tokio::test]
+async fn skip_to_now_unsticks_a_sink() {
+    let f = fx().await;
+    let id = create(&f, hec("splunk")).await.json()["id"]
+        .as_i64()
+        .unwrap();
+    f.rec.down.store(true, Ordering::SeqCst);
+    for _ in 0..3 {
+        f.ee.user(&f.admin, &format!("u{}", rand::random::<u32>()))
+            .await;
+    }
+    f.ee.forwarder.tick(&f.ee.state, now_unix()).await.unwrap();
+    let r =
+        f.ee.send("POST", &format!("{BASE}/{id}/skip"), None, Some(&f.admin))
+            .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text);
+    let v = r.json();
+    assert_eq!(
+        v["gap_rows"], 4,
+        "its create row and three users, skipped: {v}"
+    );
+    assert_eq!(v["last_error"], Value::Null);
+    assert_eq!(v["behind"], 1, "only the audit.sink.skip row is left");
+    assert!(f
+        .ee
+        .actions()
+        .await
+        .contains(&"audit.sink.skip".to_string()));
+}

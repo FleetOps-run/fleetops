@@ -1,7 +1,7 @@
 -- Audit forwarding (SIEM forwarding plan): where audit rows are sent, and
 -- how far each sink has got (`cursor` is the last audit id it accepted).
 CREATE TABLE ee_audit_sinks (
-    id            INTEGER PRIMARY KEY,
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
     name          TEXT    NOT NULL UNIQUE,
     kind          TEXT    NOT NULL CHECK (kind IN ('syslog', 'splunk_hec', 'http')),
     enabled       INTEGER NOT NULL DEFAULT 1,

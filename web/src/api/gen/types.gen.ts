@@ -2493,6 +2493,9 @@ export type ShowBody = {
 };
 
 export type SinkBody = {
+    /**
+     * Left out keeps the stored certificate; `""` removes it.
+     */
     ca_pem?: string | null;
     enabled?: boolean;
     headers?: Array<HeaderBody>;
@@ -2506,6 +2509,9 @@ export type SinkBody = {
      */
     token?: string | null;
     transport?: SyslogTransport | null;
+    /**
+     * Empty or left out keeps the stored URL.
+     */
     url?: string | null;
 };
 
@@ -2544,7 +2550,10 @@ export type SinkView = {
     target: string;
     token_set: boolean;
     transport?: SyslogTransport | null;
-    url?: string | null;
+    /**
+     * Whether a URL is stored; the URL itself is a secret.
+     */
+    url_set: boolean;
 };
 
 export type SmtpBody = {
@@ -3858,6 +3867,36 @@ export type UpdateAuditSinkResponses = {
 };
 
 export type UpdateAuditSinkResponse = UpdateAuditSinkResponses[keyof UpdateAuditSinkResponses];
+
+export type SkipAuditSinkData = {
+    body?: never;
+    path: {
+        /**
+         * Sink id
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/api/v1/ee/audit/sinks/{id}/skip';
+};
+
+export type SkipAuditSinkErrors = {
+    /**
+     * Error: `{code, message, request_id}`
+     */
+    default: ErrorBody;
+};
+
+export type SkipAuditSinkError = SkipAuditSinkErrors[keyof SkipAuditSinkErrors];
+
+export type SkipAuditSinkResponses = {
+    /**
+     * The sink
+     */
+    200: SinkView;
+};
+
+export type SkipAuditSinkResponse = SkipAuditSinkResponses[keyof SkipAuditSinkResponses];
 
 export type TestAuditSinkData = {
     body?: never;

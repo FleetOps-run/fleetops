@@ -1169,6 +1169,55 @@
         ]
       }
     },
+    "/api/v1/ee/audit/sinks/{id}/skip": {
+      "post": {
+        "tags": [
+          "enterprise"
+        ],
+        "summary": "Skip everything not sent yet (counted as a gap); for a receiver that keeps refusing a row",
+        "operationId": "skipAuditSink",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Sink id",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The sink",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SinkView"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error: `{code, message, request_id}`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrf": [],
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/v1/ee/audit/sinks/{id}/test": {
       "post": {
         "tags": [
@@ -19468,7 +19517,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Left out keeps the stored certificate; `\"\"` removes it."
           },
           "enabled": {
             "type": "boolean"
@@ -19531,7 +19581,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Empty or left out keeps the stored URL."
           }
         }
       },
@@ -19559,6 +19610,7 @@
           "kind",
           "enabled",
           "target",
+          "url_set",
           "header_names",
           "token_set",
           "ca_set",
@@ -19641,11 +19693,9 @@
               }
             ]
           },
-          "url": {
-            "type": [
-              "string",
-              "null"
-            ]
+          "url_set": {
+            "type": "boolean",
+            "description": "Whether a URL is stored; the URL itself is a secret."
           }
         }
       },

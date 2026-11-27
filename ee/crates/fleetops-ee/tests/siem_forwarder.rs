@@ -103,11 +103,11 @@ async fn sink_now(ee: &Ee) -> i64 {
         "siem",
         SinkKind::Http,
         true,
-        &SinkSettings {
+        &SinkSettings::default(),
+        &SinkSecrets {
             url: Some("https://siem.lan/in".into()),
             ..Default::default()
         },
-        &SinkSecrets::default(),
         cursor,
         0,
     )
@@ -257,11 +257,11 @@ async fn sinks_progress_independently() {
         "second",
         SinkKind::Http,
         true,
-        &SinkSettings {
+        &SinkSettings::default(),
+        &SinkSecrets {
             url: Some("https://other.lan/in".into()),
             ..Default::default()
         },
-        &SinkSecrets::default(),
         cursor,
         0,
     )
@@ -273,4 +273,94 @@ async fn sinks_progress_independently() {
     for id in [a, b] {
         assert_eq!(db::get(&f.ee.store, id).await.unwrap().0.cursor, ids[1]);
     }
+}
+
+/// Changes the sink's URL (or deletes the sink) during its first send, and
+/// records the URL each batch went to.
+struct Meddler {
+    store: fleetops_store::Store,
+    delete: bool,
+    urls: Mutex<Vec<String>>,
+}
+
+#[async_trait]
+impl Sender for Meddler {
+    async fn send(&self, sink: &Sink, sec: &SinkSecrets, _: &[AuditEntry]) -> Result<()> {
+        let first = {
+            let mut urls = self.urls.lock().unwrap();
+            urls.push(sec.url.clone().unwrap_or_default());
+            urls.len() == 1
+        };
+        // The edit lands while this batch is in flight.
+        if first {
+            if self.delete {
+                db::delete(&self.store, sink.id).await.unwrap();
+            } else {
+                let mut new = sec.clone();
+                new.url = Some("https://new.lan/in".into());
+                db::update(
+                    &self.store,
+                    sink.id,
+                    &sink.name,
+                    true,
+                    &sink.settings,
+                    Some(&new),
+                    1,
+                )
+                .await
+                .unwrap();
+            }
+        }
+        Ok(())
+    }
+}
+
+async fn meddled(delete: bool) -> (Vec<String>, Ee) {
+    let key = key();
+    // The meddler needs the app's store, so it gets its own forwarder.
+    let ee = ee_siem_app(&key, Arc::new(Rec::default())).await;
+    let admin = ee.admin().await;
+    ee.install(&admin, &license(&key, now_unix() + 30 * DAY, None, &[]))
+        .await;
+    let m = Arc::new(Meddler {
+        store: ee.store.clone(),
+        delete,
+        urls: Mutex::default(),
+    });
+    let fwd = fleetops_ee::siem::forwarder::Forwarder::new(Some(m.clone()));
+    sink_now(&ee).await;
+    rows(&ee, BATCH as usize * 3).await;
+    fwd.tick(&ee.state, 100).await.unwrap();
+    let urls = m.urls.lock().unwrap().clone();
+    (urls, ee)
+}
+
+#[tokio::test]
+async fn an_edit_mid_pass_applies_to_the_next_batch() {
+    let (urls, _) = meddled(false).await;
+    assert_eq!(urls[0], "https://siem.lan/in");
+    assert!(urls.len() > 1, "{urls:?}");
+    assert!(
+        urls[1..].iter().all(|u| u == "https://new.lan/in"),
+        "{urls:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_delete_mid_pass_stops_sending() {
+    let (urls, ee) = meddled(true).await;
+    assert_eq!(urls.len(), 1, "{urls:?}");
+    assert!(
+        db::list(&ee.store).await.unwrap().is_empty(),
+        "nothing wrote the sink back"
+    );
+}
+
+#[tokio::test]
+async fn sink_ids_are_never_reused() {
+    let f = fx().await;
+    let a = sink_now(&f.ee).await;
+    db::delete(&f.ee.store, a).await.unwrap();
+    let b = sink_now(&f.ee).await;
+    assert!(b > a, "{b} reuses {a}");
 }

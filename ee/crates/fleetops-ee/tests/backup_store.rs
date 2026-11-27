@@ -124,11 +124,9 @@ async fn hooks_list_every_sealed_ee_column() {
         "splunk",
         fleetops_ee::siem::model::SinkKind::SplunkHec,
         true,
-        &fleetops_ee::siem::model::SinkSettings {
-            url: Some("https://splunk.example/services/collector/event".into()),
-            ..Default::default()
-        },
+        &fleetops_ee::siem::model::SinkSettings::default(),
         &fleetops_ee::siem::model::SinkSecrets {
+            url: Some("https://splunk.example/services/collector/event".into()),
             token: Some("t".into()),
             headers: vec![],
         },

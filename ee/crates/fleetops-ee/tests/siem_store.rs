@@ -14,11 +14,9 @@ async fn store() -> Store {
 
 fn hec() -> (SinkSettings, SinkSecrets) {
     (
-        SinkSettings {
-            url: Some("https://splunk.example:8088/services/collector/event".into()),
-            ..Default::default()
-        },
+        SinkSettings::default(),
         SinkSecrets {
+            url: Some("https://splunk.example:8088/services/collector/event".into()),
             token: Some("t0ken".into()),
             headers: vec![],
         },
@@ -36,7 +34,8 @@ async fn create_get_round_trips_and_seals() {
     assert_eq!(sink.name, "splunk");
     assert_eq!(sink.kind, SinkKind::SplunkHec);
     assert_eq!(sink.cursor, 7);
-    assert_eq!(sink.settings.url, set.url);
+    assert_eq!(sink.settings, set);
+    assert_eq!(got.url, sec.url);
     assert_eq!(got.token.as_deref(), Some("t0ken"));
     let raw: String = sqlx::query_scalar("SELECT secrets FROM ee_audit_sinks WHERE id = ?")
         .bind(id)
@@ -71,6 +70,7 @@ async fn update_with_secrets_replaces_them() {
         .await
         .unwrap();
     let new = SinkSecrets {
+        url: sec.url.clone(),
         token: Some("n3w".into()),
         headers: vec![],
     };
@@ -156,11 +156,11 @@ fn validate_rules() {
         validate(
             SinkKind::Http,
             &SinkSettings {
-                url: Some(url.into()),
                 header_names: names,
                 ..Default::default()
             },
             &SinkSecrets {
+                url: Some(url.into()),
                 token: None,
                 headers,
             },

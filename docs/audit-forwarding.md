@@ -12,7 +12,7 @@ A sink is somewhere audit entries go. Up to 10 sinks can run side by side, each 
 | Splunk HEC | Batches to Splunk's HTTP Event Collector, sourcetype `fleetops:audit` | Splunk Enterprise and Splunk Cloud |
 | HTTPS (JSON) | Batches as a JSON array, with headers you choose | Datadog, Elastic (ingest pipeline or Logstash `http` input), Vector, Fluent Bit, your own service |
 
-Tokens, header values and CA certificates are stored encrypted and never shown again; leave a field blank when editing to keep the stored value. **Send test** sends one sample entry (action `audit.sink.test`) without adding it to the audit log.
+URLs, tokens and header values are stored encrypted and never shown again (many collectors put a token in the URL); the page shows only the host. Leave a field blank when editing to keep the stored value; a pasted CA certificate is kept the same way. Put credentials in a header or token, not in the URL: `https://user:password@…` is refused. **Send test** sends one sample entry (action `audit.sink.test`) without adding it to the audit log.
 
 When you add a sink, choose where it starts: **New entries only** (the default), or **Every entry still kept**, which sends the whole audit log first.
 
@@ -44,6 +44,8 @@ A syslog message is `<PRI>1 TIMESTAMP fleetops fleetops - ACTION - JSON`. The fa
 
 - **In order, at least once.** Each sink remembers the last entry its receiver accepted and moves on only after the next batch is accepted (a 2xx answer for HEC and HTTPS; written and flushed for TCP and TLS). Batches hold up to 500 entries. UDP is fire-and-forget.
 - **Retries.** A failing sink shows the error (host only, never a URL path or secret) and is retried after 10 seconds, then 20, 40 and so on, up to every 5 minutes. When it recovers it sends everything it missed, oldest first.
+- **Oversized entries.** An entry whose JSON would pass 8 KB for syslog, or 64 KB for Splunk HEC and HTTPS, is sent with its `detail` replaced by `{"truncated": true, "bytes": N}`, so one huge entry can't block a sink. The full entry stays in the audit log.
+- **Stuck sinks.** If a receiver keeps refusing an entry, **Skip to now** on that sink moves it past everything not yet sent. The skipped entries count as a gap and stay in the audit log; the skip is itself audited (`audit.sink.skip`).
 - **Status.** The sinks table shows "Up to date", how many entries a sink is behind, when it last sent, or its error.
 - **Gaps.** If a receiver is down longer than retention keeps entries, the oldest unsent ones are deleted before they can go. The sink then says how many were lost and carries on. Raise retention, or fix the receiver sooner, to avoid this.
 - Changes to sinks and retention are themselves audited (`audit.sink.create`, `audit.sink.update`, `audit.sink.delete`, `audit.retention.update`), so a new sink's first entry is usually its own creation.

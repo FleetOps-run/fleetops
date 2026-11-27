@@ -35,7 +35,8 @@ pub struct SinkView {
     /// `host:port` for syslog, the URL's host otherwise.
     pub target: String,
     pub transport: Option<SyslogTransport>,
-    pub url: Option<String>,
+    /// Whether a URL is stored; the URL itself is a secret.
+    pub url_set: bool,
     pub header_names: Vec<String>,
     pub token_set: bool,
     pub ca_set: bool,
@@ -77,7 +78,9 @@ pub struct SinkBody {
     pub host: Option<String>,
     pub port: Option<u16>,
     pub transport: Option<SyslogTransport>,
+    /// Left out keeps the stored certificate; `""` removes it.
     pub ca_pem: Option<String>,
+    /// Empty or left out keeps the stored URL.
     pub url: Option<String>,
     /// Splunk HEC token; empty or left out keeps the stored one.
     pub token: Option<String>,
@@ -106,14 +109,20 @@ fn trimmed(s: &Option<String>) -> Option<String> {
 }
 
 /// The settings and secrets `b` asks for, with blanks filled from `old`.
-fn parts(b: &SinkBody, old: Option<&SinkSecrets>) -> (SinkSettings, SinkSecrets) {
+fn parts(b: &SinkBody, old: Option<(&SinkSettings, &SinkSecrets)>) -> (SinkSettings, SinkSecrets) {
     let syslog = b.kind == SinkKind::Syslog;
+    let old_set = old.map(|o| o.0);
+    let old = old.map(|o| o.1);
+    let ca_pem = match b.ca_pem.as_deref().map(str::trim) {
+        None => old_set.and_then(|o| o.ca_pem.clone()),
+        Some("") => None,
+        Some(pem) => Some(pem.to_string()),
+    };
     let settings = SinkSettings {
         host: trimmed(&b.host).filter(|_| syslog),
         port: b.port.filter(|_| syslog),
         transport: b.transport.filter(|_| syslog),
-        ca_pem: trimmed(&b.ca_pem).filter(|_| syslog),
-        url: trimmed(&b.url).filter(|_| !syslog),
+        ca_pem: ca_pem.filter(|_| syslog && b.transport == Some(SyslogTransport::Tls)),
         header_names: if b.kind == SinkKind::Http {
             b.headers
                 .iter()
@@ -146,7 +155,19 @@ fn parts(b: &SinkBody, old: Option<&SinkSecrets>) -> (SinkSettings, SinkSecrets)
     } else {
         vec![]
     };
-    (settings, SinkSecrets { token, headers })
+    let url = match trimmed(&b.url) {
+        Some(u) => Some(u),
+        None => old.and_then(|o| o.url.clone()),
+    }
+    .filter(|_| !syslog);
+    (
+        settings,
+        SinkSecrets {
+            url,
+            token,
+            headers,
+        },
+    )
 }
 
 async fn count_after(s: &AppState, cursor: i64) -> ApiResult<i64> {
@@ -164,12 +185,7 @@ async fn view(s: &AppState, sink: Sink, secrets: &SinkSecrets) -> ApiResult<Sink
             sink.settings.host.as_deref().unwrap_or_default(),
             sink.settings.port.unwrap_or_default()
         ),
-        _ => sink
-            .settings
-            .url
-            .as_deref()
-            .and_then(host_of)
-            .unwrap_or_default(),
+        _ => secrets.url.as_deref().and_then(host_of).unwrap_or_default(),
     };
     Ok(SinkView {
         behind: count_after(s, sink.cursor).await?,
@@ -179,7 +195,7 @@ async fn view(s: &AppState, sink: Sink, secrets: &SinkSecrets) -> ApiResult<Sink
         enabled: sink.enabled,
         target,
         transport: sink.settings.transport,
-        url: sink.settings.url,
+        url_set: secrets.url.is_some(),
         header_names: sink.settings.header_names,
         token_set: secrets.token.is_some(),
         ca_set: sink.settings.ca_pem.is_some(),
@@ -237,7 +253,15 @@ pub async fn create(
         return Err(Error::Conflict(format!("at most {MAX_SINKS} sinks")).into());
     }
     let cursor = match b.start.unwrap_or_default() {
-        SinkStart::All => 0,
+        // Just before the oldest row kept, so rows pruned before this sink
+        // existed do not count as a gap.
+        SinkStart::All => {
+            let oldest: Option<i64> = sqlx::query_scalar("SELECT MIN(id) FROM audit_log")
+                .fetch_one(s.store.pool())
+                .await
+                .map_err(|e| Error::Internal(format!("database: {e}")))?;
+            oldest.map_or(0, |id| id - 1)
+        }
         SinkStart::Now => s
             .store
             .list_audit(1, None)
@@ -276,7 +300,7 @@ pub async fn update(
     if old.kind != b.kind {
         return Err(Error::Invalid("a sink's kind cannot change; add a new sink".into()).into());
     }
-    let (settings, secrets) = parts(&b, Some(&old_secrets));
+    let (settings, secrets) = parts(&b, Some((&old.settings, &old_secrets)));
     validate(b.kind, &settings, &secrets)?;
     db::update(
         &s.store,
@@ -298,11 +322,13 @@ pub async fn update(
     responses((status = 204, description = "Deleted")))]
 pub async fn delete(
     State(s): State<AppState>,
+    Extension(fwd): Extension<Arc<Forwarder>>,
     AdminUser(admin): AdminUser,
     ApiPath(id): ApiPath<i64>,
 ) -> ApiResult<StatusCode> {
     let (sink, _) = db::get(&s.store, id).await?;
     db::delete(&s.store, id).await?;
+    fwd.forget(id);
     audit(
         &s,
         admin.user.id,
@@ -346,6 +372,40 @@ pub async fn test(
             other => other,
         })?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(post, path = "/ee/audit/sinks/{id}/skip", operation_id = "skipAuditSink", tag = "enterprise",
+    summary = "Skip everything not sent yet (counted as a gap); for a receiver that keeps refusing a row",
+    params(("id" = i64, Path, description = "Sink id")),
+    responses((status = 200, description = "The sink", body = SinkView)))]
+pub async fn skip(
+    State(s): State<AppState>,
+    Extension(fwd): Extension<Arc<Forwarder>>,
+    AdminUser(admin): AdminUser,
+    ApiPath(id): ApiPath<i64>,
+) -> ApiResult<Json<SinkView>> {
+    require_feature(&s, Feature::AuditSinks)?;
+    let (sink, _) = db::get(&s.store, id).await?;
+    let newest = s
+        .store
+        .list_audit(1, None)
+        .await?
+        .first()
+        .map_or(0, |e| e.id);
+    let skipped = count_after(&s, sink.cursor).await?;
+    db::skip(&s.store, id, newest, skipped).await?;
+    fwd.forget(id);
+    fleetops_api::audit_detail(
+        &s,
+        Some(admin.user.id),
+        "audit.sink.skip",
+        "audit_sink",
+        &sink.name,
+        "success",
+        Some(json!({"skipped": skipped})),
+    )
+    .await;
+    Ok(Json(view_id(&s, id).await?))
 }
 
 async fn retention(s: &AppState) -> ApiResult<Json<Retention>> {

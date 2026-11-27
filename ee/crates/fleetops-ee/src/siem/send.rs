@@ -20,10 +20,30 @@ pub trait Sender: Send + Sync {
     async fn send(&self, sink: &Sink, secrets: &SinkSecrets, rows: &[AuditEntry]) -> Result<()>;
 }
 
+/// The most a syslog message may be: what rsyslog and syslog-ng accept by
+/// default, and well inside one UDP datagram.
+pub const SYSLOG_MAX: usize = 8192;
+/// The most one row may be in an HTTP or HEC batch.
+pub const HTTP_ROW_MAX: usize = 64 * 1024;
+
 /// A row as receivers get it: the API's audit entry, tagged with its source.
 pub fn row_json(e: &AuditEntry) -> Value {
     let mut v = serde_json::to_value(e).expect("audit entry serialises");
     v["source"] = json!("fleetops");
+    v
+}
+
+/// [`row_json`], with `detail` replaced by a marker when the row would pass
+/// `max` bytes: a receiver that refuses big messages would otherwise refuse
+/// the same row forever and hold up every row after it.
+pub fn row_json_capped(e: &AuditEntry, max: usize) -> Value {
+    let v = row_json(e);
+    let len = v.to_string().len();
+    if len <= max {
+        return v;
+    }
+    let mut v = v;
+    v["detail"] = json!({"truncated": true, "bytes": len});
     v
 }
 
@@ -57,7 +77,8 @@ pub fn syslog_line(e: &AuditEntry) -> String {
         "<{}>1 {ts} fleetops fleetops - {} - {}",
         FACILITY * 8 + severity,
         msgid(&e.action),
-        row_json(e)
+        // Leave room for the header before the JSON.
+        row_json_capped(e, SYSLOG_MAX - 128)
     )
 }
 
@@ -65,7 +86,7 @@ pub fn syslog_line(e: &AuditEntry) -> String {
 pub fn hec_body(rows: &[AuditEntry]) -> String {
     rows.iter()
         .map(|e| {
-            json!({"time": e.ts, "host": "fleetops", "sourcetype": "fleetops:audit", "event": row_json(e)})
+            json!({"time": e.ts, "host": "fleetops", "sourcetype": "fleetops:audit", "event": row_json_capped(e, HTTP_ROW_MAX)})
                 .to_string()
         })
         .collect::<Vec<_>>()
@@ -73,7 +94,11 @@ pub fn hec_body(rows: &[AuditEntry]) -> String {
 }
 
 pub fn http_body(rows: &[AuditEntry]) -> Value {
-    Value::Array(rows.iter().map(row_json).collect())
+    Value::Array(
+        rows.iter()
+            .map(|e| row_json_capped(e, HTTP_ROW_MAX))
+            .collect(),
+    )
 }
 
 /// `msg` with every secret value replaced.
@@ -138,13 +163,9 @@ impl LiveSender {
         if status.is_success() {
             return Ok(());
         }
-        let text: String = res
-            .text()
-            .await
-            .unwrap_or_default()
-            .chars()
-            .take(300)
-            .collect();
+        // Remove secrets before cutting, so no partial secret survives the cut.
+        let text = scrub(res.text().await.unwrap_or_default(), secrets);
+        let text: String = text.chars().take(300).collect();
         Err(upstream(scrub(
             describe(&format!("answered {}", status.as_u16()), url, text.trim()),
             secrets,
@@ -263,7 +284,7 @@ impl Sender for LiveSender {
         if rows.is_empty() {
             return Ok(());
         }
-        let url = sink.settings.url.as_deref().unwrap_or_default();
+        let url = secrets.url.as_deref().unwrap_or_default();
         match sink.kind {
             SinkKind::Syslog => self.syslog(sink, rows).await,
             SinkKind::SplunkHec => {
@@ -343,6 +364,7 @@ mod tests {
     #[test]
     fn scrub_removes_secrets() {
         let s = SinkSecrets {
+            url: None,
             token: Some("t0ken".into()),
             headers: vec![("K".into(), "k3y".into())],
         };

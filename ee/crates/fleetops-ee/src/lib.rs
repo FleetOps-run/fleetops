@@ -177,6 +177,7 @@ pub fn api_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(siem::routes::list, siem::routes::create))
         .routes(routes!(siem::routes::update, siem::routes::delete))
         .routes(routes!(siem::routes::test))
+        .routes(routes!(siem::routes::skip))
         .routes(routes!(
             siem::routes::get_retention,
             siem::routes::put_retention
