@@ -13,6 +13,7 @@ export const FEATURE_LABELS: Record<Feature, string> = {
   backup: "scheduled backups",
   vuln_scan: "vulnerability scanning",
   notifications: "notifications",
+  api_tokens: "API tokens",
 };
 export const SALES_URL = "https://fleetops.run/contact#sales";
 

@@ -155,6 +155,10 @@ export type AuditEntry = {
     result: string;
     target_id?: string | null;
     target_type?: string | null;
+    /**
+     * The API token the action came through; `null` for a browser session.
+     */
+    token_name?: string | null;
     ts: number;
     user_id?: number | null;
     username?: string | null;
@@ -664,6 +668,14 @@ export type CreatedNetwork = {
     id: string;
 };
 
+export type CreatedToken = {
+    /**
+     * The token itself. Shown only now; FleetOps keeps only its hash.
+     */
+    secret: string;
+    token: TokenInfo;
+};
+
 export type Credentials = {
     password: string;
     username: string;
@@ -1031,7 +1043,7 @@ export type ExecOptions = {
 /**
  * An Enterprise feature a license can grant.
  */
-export type Feature = 'audit_export' | 'teams' | 'rbac' | 'sso' | 'backup' | 'vuln_scan' | 'notifications';
+export type Feature = 'audit_export' | 'teams' | 'rbac' | 'sso' | 'backup' | 'vuln_scan' | 'notifications' | 'api_tokens';
 
 export type FileKind = 'secret' | 'config';
 
@@ -1815,6 +1827,15 @@ export type NewSwarmObject = {
 export type NewTeam = {
     description?: string | null;
     name: string;
+};
+
+export type NewToken = {
+    /**
+     * 1-365; left out, the token never expires.
+     */
+    expires_in_days?: number | null;
+    name: string;
+    read_only?: boolean;
 };
 
 /**
@@ -2958,6 +2979,31 @@ export type TestResult = {
      */
     groups?: Array<string> | null;
     ok: boolean;
+};
+
+/**
+ * A token as pages show it; never the secret or its hash.
+ */
+export type TokenInfo = {
+    created_at: number;
+    /**
+     * `null`: never expires.
+     */
+    expires_at?: number | null;
+    id: number;
+    last_used_at?: number | null;
+    last_used_ip?: string | null;
+    name: string;
+    /**
+     * The token's first characters (`fo_` and 6 hex), to tell it apart.
+     */
+    prefix: string;
+    /**
+     * Only GET, HEAD and OPTIONS.
+     */
+    read_only: boolean;
+    user_id: number;
+    username: string;
 };
 
 export type Topic = 'events' | 'stats' | 'logs' | 'exec' | 'task' | 'kube-watch' | 'swarm-tasks' | 'audit' | 'signal';
@@ -5459,6 +5505,111 @@ export type AddTeamMemberResponses = {
 };
 
 export type AddTeamMemberResponse = AddTeamMemberResponses[keyof AddTeamMemberResponses];
+
+export type ListApiTokensData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/ee/tokens';
+};
+
+export type ListApiTokensErrors = {
+    /**
+     * Error: `{code, message, request_id}`
+     */
+    default: ErrorBody;
+};
+
+export type ListApiTokensError = ListApiTokensErrors[keyof ListApiTokensErrors];
+
+export type ListApiTokensResponses = {
+    /**
+     * Tokens, newest first
+     */
+    200: Array<TokenInfo>;
+};
+
+export type ListApiTokensResponse = ListApiTokensResponses[keyof ListApiTokensResponses];
+
+export type CreateApiTokenData = {
+    body: NewToken;
+    path?: never;
+    query?: never;
+    url: '/api/v1/ee/tokens';
+};
+
+export type CreateApiTokenErrors = {
+    /**
+     * Error: `{code, message, request_id}`
+     */
+    default: ErrorBody;
+};
+
+export type CreateApiTokenError = CreateApiTokenErrors[keyof CreateApiTokenErrors];
+
+export type CreateApiTokenResponses = {
+    /**
+     * The token and, once only, its secret
+     */
+    201: CreatedToken;
+};
+
+export type CreateApiTokenResponse = CreateApiTokenResponses[keyof CreateApiTokenResponses];
+
+export type ListAllApiTokensData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/ee/tokens/all';
+};
+
+export type ListAllApiTokensErrors = {
+    /**
+     * Error: `{code, message, request_id}`
+     */
+    default: ErrorBody;
+};
+
+export type ListAllApiTokensError = ListAllApiTokensErrors[keyof ListAllApiTokensErrors];
+
+export type ListAllApiTokensResponses = {
+    /**
+     * Tokens, newest first
+     */
+    200: Array<TokenInfo>;
+};
+
+export type ListAllApiTokensResponse = ListAllApiTokensResponses[keyof ListAllApiTokensResponses];
+
+export type DeleteApiTokenData = {
+    body?: never;
+    path: {
+        /**
+         * Token id
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/api/v1/ee/tokens/{id}';
+};
+
+export type DeleteApiTokenErrors = {
+    /**
+     * Error: `{code, message, request_id}`
+     */
+    default: ErrorBody;
+};
+
+export type DeleteApiTokenError = DeleteApiTokenErrors[keyof DeleteApiTokenErrors];
+
+export type DeleteApiTokenResponses = {
+    /**
+     * Revoked
+     */
+    204: void;
+};
+
+export type DeleteApiTokenResponse = DeleteApiTokenResponses[keyof DeleteApiTokenResponses];
 
 export type ListUserEffectiveAccessData = {
     body?: never;
