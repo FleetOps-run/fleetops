@@ -70,6 +70,9 @@ pub struct ApiConfig {
     pub in_cluster_url: Option<String>,
     /// How often an open port-forward re-checks its user's access.
     pub forward_recheck: Duration,
+    /// How often an open port-forward pings its client, so proxies in
+    /// between do not drop an idle connection.
+    pub forward_ping: Duration,
 }
 
 impl Default for ApiConfig {
@@ -94,6 +97,7 @@ impl Default for ApiConfig {
             swarm_task_poll: Duration::from_secs(3),
             in_cluster_url: None,
             forward_recheck: Duration::from_secs(60),
+            forward_ping: Duration::from_secs(25),
         }
     }
 }

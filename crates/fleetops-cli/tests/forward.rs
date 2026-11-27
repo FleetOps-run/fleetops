@@ -25,8 +25,12 @@ use tokio::{
 #[derive(Clone, Default)]
 struct Mock {
     expired: bool,
-    /// Streams to refuse with 503 before accepting.
+    /// Streams to refuse before accepting, and with what status (503 if unset).
     refuse_first: Arc<AtomicUsize>,
+    refuse_status: Option<StatusCode>,
+    /// Streams open now, and the most at once.
+    active: Arc<AtomicUsize>,
+    peak: Arc<AtomicUsize>,
     headers: Arc<Mutex<Vec<String>>>,
 }
 
@@ -54,18 +58,27 @@ async fn stream(State(m): State<Mock>, h: HeaderMap, ws: WebSocketUpgrade) -> Re
     );
     if m.refuse_first.load(Ordering::SeqCst) > 0 {
         m.refuse_first.fetch_sub(1, Ordering::SeqCst);
-        return (StatusCode::SERVICE_UNAVAILABLE, "cluster unreachable").into_response();
+        return (
+            m.refuse_status.unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
+            "cluster unreachable",
+        )
+            .into_response();
     }
-    ws.on_upgrade(|mut s| async move {
+    ws.on_upgrade(move |mut s| async move {
+        let now = m.active.fetch_add(1, Ordering::SeqCst) + 1;
+        m.peak.fetch_max(now, Ordering::SeqCst);
+        // Hold the stream a moment, so connections overlap.
+        tokio::time::sleep(Duration::from_millis(30)).await;
         while let Some(Ok(msg)) = s.next().await {
             if let Message::Binary(b) = msg {
                 let mut out = b"pod|".to_vec();
                 out.extend_from_slice(&b);
                 if s.send(Message::Binary(out.into())).await.is_err() {
-                    return;
+                    break;
                 }
             }
         }
+        m.active.fetch_sub(1, Ordering::SeqCst);
     })
 }
 
@@ -180,4 +193,37 @@ fn local_defaults_to_remote_port() {
     assert_eq!(fleetops_cli::forward::local_port(None, 5432), 5432);
     assert_eq!(fleetops_cli::forward::local_port(Some(0), 5432), 0);
     assert_eq!(fleetops_cli::forward::local_port(Some(15432), 5432), 15432);
+}
+
+#[tokio::test]
+async fn thirty_clients_share_sixteen_streams() {
+    let m = Mock::default();
+    let server = mock(m.clone()).await;
+    let (addr, stop, _task) = start(args(server)).await;
+    let clients: Vec<_> = (0..30)
+        .map(|i| tokio::spawn(async move { roundtrip(addr, format!("c{i:02}").as_bytes()).await }))
+        .collect();
+    for (i, c) in clients.into_iter().enumerate() {
+        let got = tokio::time::timeout(Duration::from_secs(10), c)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(got, format!("pod|c{i:02}").into_bytes());
+    }
+    let peak = m.peak.load(Ordering::SeqCst);
+    assert!(peak <= 16, "{peak} streams at once");
+    let _ = stop.send(());
+}
+
+#[tokio::test]
+async fn a_429_is_retried_not_dropped() {
+    let m = Mock {
+        refuse_first: Arc::new(AtomicUsize::new(2)),
+        refuse_status: Some(StatusCode::TOO_MANY_REQUESTS),
+        ..Default::default()
+    };
+    let server = mock(m.clone()).await;
+    let (addr, stop, _task) = start(args(server)).await;
+    assert_eq!(roundtrip(addr, b"later").await, b"pod|later");
+    let _ = stop.send(());
 }

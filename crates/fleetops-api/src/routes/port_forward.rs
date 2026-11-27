@@ -21,7 +21,7 @@ use axum::{
     Json,
 };
 use fleetops_core::{
-    kube::{KubeOps, PortStream},
+    kube::{KubeOps, PortForward},
     now_unix,
     perm::{Permission, Row, Verb},
     Error, Result,
@@ -225,48 +225,107 @@ pub async fn stream(
         Ok(ws) => ws,
         Err(r) => return crate::extract::rejection(r.status(), r.body_text()),
     };
+    // Before the upgrade, so a missing pod is an answer the CLI can print.
+    let pf = match ops.port_forward(&target.ns, &target.pod, target.port).await {
+        Ok(pf) => pf,
+        Err(e) => return refuse(e),
+    };
     ws.on_upgrade(move |socket| async move {
         let _guard = guard;
-        run(s, cred, target, expires_at, ops, socket).await;
+        run(s, cred, target, expires_at, pf, socket).await;
     })
 }
 
-async fn close(mut socket: WebSocket, reason: String) {
-    let _ = socket
-        .send(Message::Close(Some(CloseFrame {
-            code: 1011,
-            reason: reason.chars().take(120).collect::<String>().into(),
-        })))
-        .await;
+fn close_frame(code: u16, reason: &str) -> Message {
+    Message::Close(Some(CloseFrame {
+        code,
+        reason: reason.chars().take(120).collect::<String>().into(),
+    }))
 }
 
+/// Carries bytes both ways until either side ends, pinging the client so
+/// proxies keep an idle connection, re-checking access, and closing with
+/// the kubelet's reason when the pod side fails.
 async fn run(
     s: AppState,
     cred: String,
     t: Target,
     expires_at: i64,
-    ops: Arc<dyn KubeOps>,
+    pf: PortForward,
     socket: WebSocket,
 ) {
-    let mut pod: PortStream = match ops.port_forward(&t.ns, &t.pod, t.port).await {
-        Ok(p) => p,
-        Err(e) => return close(socket, e.to_string()).await,
-    };
-    let mut io = crate::agents::axum_io::io(socket);
-    let copy = tokio::io::copy_bidirectional(&mut io, &mut pod);
-    tokio::pin!(copy);
+    use futures_util::{SinkExt, StreamExt};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let (mut tx, mut rx) = socket.split();
+    let (mut pod_r, mut pod_w) = tokio::io::split(pf.stream);
+    // Fused: once it has answered, it stays pending instead of panicking.
+    let pod_error = futures_util::FutureExt::fuse(async move {
+        match pf.error {
+            Some(f) => f.await,
+            None => std::future::pending().await,
+        }
+    });
+    tokio::pin!(pod_error);
     let mut recheck = tokio::time::interval(s.config.forward_recheck);
     recheck.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     recheck.tick().await;
+    let mut ping = tokio::time::interval(s.config.forward_ping);
+    ping.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    ping.tick().await;
     let until = std::time::Duration::from_secs(expires_at.saturating_sub(now_unix()).max(0) as u64);
     let expiry = tokio::time::sleep(until);
     tokio::pin!(expiry);
+    let mut buf = vec![0u8; 32 * 1024];
+    let mut client_done = false;
     loop {
         tokio::select! {
-            _ = &mut copy => return,
-            _ = &mut expiry => return,
+            n = pod_r.read(&mut buf) => match n {
+                Ok(0) | Err(_) => {
+                    // The kubelet may still be reporting why; give it a moment.
+                    let why = tokio::time::timeout(std::time::Duration::from_millis(500), &mut pod_error).await;
+                    let msg = match why {
+                        Ok(Some(e)) => close_frame(1011, &e),
+                        _ => Message::Close(None),
+                    };
+                    let _ = tx.send(msg).await;
+                    return;
+                }
+                Ok(n) => {
+                    if tx.send(Message::Binary(buf[..n].to_vec().into())).await.is_err() {
+                        return;
+                    }
+                }
+            },
+            m = rx.next(), if !client_done => match m {
+                Some(Ok(Message::Binary(b))) => {
+                    if pod_w.write_all(&b).await.is_err() {
+                        return;
+                    }
+                }
+                Some(Ok(Message::Close(_))) | None | Some(Err(_)) => {
+                    // The client finished sending: half-close toward the pod
+                    // and keep reading its answer.
+                    let _ = pod_w.shutdown().await;
+                    client_done = true;
+                }
+                Some(Ok(_)) => {}
+            },
+            Some(e) = &mut pod_error => {
+                let _ = tx.send(close_frame(1011, &e)).await;
+                return;
+            }
+            _ = ping.tick() => {
+                if tx.send(Message::Ping(Vec::new().into())).await.is_err() {
+                    return;
+                }
+            }
+            _ = &mut expiry => {
+                let _ = tx.send(close_frame(1008, "the port-forward session ended")).await;
+                return;
+            }
             _ = recheck.tick() => {
                 if s.forwards.lookup(&cred, now_unix()).is_none() || still_allowed(&s, &t).await.is_err() {
+                    let _ = tx.send(close_frame(1008, "access to this pod was removed")).await;
                     return;
                 }
             }

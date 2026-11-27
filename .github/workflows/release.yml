@@ -244,6 +244,11 @@ jobs:
         run: sudo apt-get update -q && sudo apt-get install -qy musl-tools
       - name: Build
         shell: bash
+        env:
+          # musl-tools installs only musl-gcc; cc would otherwise look for
+          # <arch>-linux-musl-gcc (ring needs a C compiler).
+          CC_x86_64_unknown_linux_musl: musl-gcc
+          CC_aarch64_unknown_linux_musl: musl-gcc
         run: |
           rustup target add ${{ matrix.target }}
           cargo build --release --locked -p fleetops-cli --target ${{ matrix.target }}

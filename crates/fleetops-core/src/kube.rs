@@ -557,6 +557,14 @@ impl KubeUsage {
 /// Bytes to and from a port inside a pod.
 pub type PortStream = Box<dyn PortIo>;
 
+/// One port-forward connection: the bytes, and what the kubelet reports
+/// when the pod side fails (e.g. nothing listening on the port).
+pub struct PortForward {
+    pub stream: PortStream,
+    /// Resolves with the kubelet's error, or `None` when there was none.
+    pub error: Option<futures_util::future::BoxFuture<'static, Option<String>>>,
+}
+
 /// What a [`PortStream`] is: read and write halves of one TCP connection.
 pub trait PortIo: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin {}
 impl<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin> PortIo for T {}
@@ -704,7 +712,7 @@ pub trait KubeOps: Send + Sync {
     async fn exec_start(&self, ns: &str, pod: &str, opts: &ExecOptions) -> Result<KubeExec>;
     /// A TCP stream to `port` inside `pod` (Kubernetes port-forward). One
     /// call per connection.
-    async fn port_forward(&self, _ns: &str, _pod: &str, _port: u16) -> Result<PortStream> {
+    async fn port_forward(&self, _ns: &str, _pod: &str, _port: u16) -> Result<PortForward> {
         Err(Error::Invalid("port-forward is not supported here".into()))
     }
     /// Logs merged across the pods `kind`/`name`'s selector matches, each

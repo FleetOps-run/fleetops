@@ -1236,7 +1236,8 @@ async fn port_forward_reaches_a_pod_port() {
     let mut s = timeout(WAIT, ops.port_forward(NS, "ticker", 8080))
         .await
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .stream;
     s.write_all(b"GET /index.html HTTP/1.0\r\n\r\n")
         .await
         .unwrap();
@@ -1254,4 +1255,22 @@ async fn port_forward_reaches_a_pod_port() {
 async fn port_forward_to_a_missing_pod_is_an_error() {
     let ops = common::ops();
     assert!(ops.port_forward(NS, "no-such-pod", 8080).await.is_err());
+}
+
+#[tokio::test]
+async fn port_forward_to_a_closed_port_reports_the_error() {
+    let ops = common::ops();
+    let pf = timeout(WAIT, ops.port_forward(NS, "ticker", 9999))
+        .await
+        .unwrap()
+        .unwrap();
+    let mut s = pf.stream;
+    let _ = s.write_all(b"x").await;
+    let err = timeout(WAIT, pf.error.expect("an error channel"))
+        .await
+        .unwrap();
+    assert!(
+        err.is_some_and(|e| e.contains("9999")),
+        "the kubelet names the port"
+    );
 }

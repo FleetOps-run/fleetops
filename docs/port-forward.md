@@ -50,7 +50,12 @@ Each forward is written to the audit log as `k8s.port_forward`, with the pod and
 
 - Pods only, one TCP port per forward. For several ports, run `fleetops-cli` once per port. UDP is not supported.
 - Docker containers are not covered. Publish the port, or use the container's terminal.
+- When a local program stops sending (shuts down its side of the connection), the whole connection closes, as with `kubectl port-forward`. psql, database clients and browsers are unaffected; a tool that sends a request, half-closes, then waits for the answer (`nc -N`) may get a cut-off reply.
 - A connection ends if the pod restarts. `fleetops-cli` keeps listening, and the next connection reaches the new pod once it is ready under the same name, as with a StatefulSet.
+
+## Behind a reverse proxy
+
+If FleetOps sits behind nginx, a load balancer or an ingress, the proxy must pass WebSocket upgrades (`Upgrade` and `Connection` headers) and the `x-fleetops-forward` header on `/api/v1/port-forward/stream`. FleetOps pings each forward every 25 seconds, so idle connections survive the usual 60-second proxy timeouts. Set `FLEETOPS_PUBLIC_URL` when FleetOps is served under a path or a different host, so the command in the dialog points at the right address.
 
 ## Security
 

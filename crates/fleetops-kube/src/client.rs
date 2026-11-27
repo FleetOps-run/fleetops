@@ -599,12 +599,17 @@ impl KubeOps for KubeClient {
         ns: &str,
         pod: &str,
         port: u16,
-    ) -> Result<fleetops_core::kube::PortStream> {
+    ) -> Result<fleetops_core::kube::PortForward> {
+        use futures_util::FutureExt;
         let mut pf = timed(self.pods(ns).portforward(pod, &[port])).await?;
         let stream = pf
             .take_stream(port)
             .ok_or_else(|| Error::Internal("port-forward gave no stream".into()))?;
-        Ok(Box::new(Forwarded { _pf: pf, stream }))
+        let error = pf.take_error(port).map(|f| f.boxed());
+        Ok(fleetops_core::kube::PortForward {
+            stream: Box::new(Forwarded { _pf: pf, stream }),
+            error,
+        })
     }
 
     async fn exec_start(&self, ns: &str, pod: &str, opts: &ExecOptions) -> Result<KubeExec> {

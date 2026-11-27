@@ -303,15 +303,59 @@ async fn gone_pod_fails_one_connection() {
         .unwrap()
         .to_string();
     let addr = t.serve().await;
-    let mut ws = stream(addr, Some(&gone), None).await.unwrap();
-    let end = tokio::time::timeout(Duration::from_secs(5), ws.next())
-        .await
-        .unwrap();
-    match end {
-        Some(Ok(Message::Close(Some(f)))) => assert!(f.reason.contains("not found"), "{f:?}"),
-        other => panic!("expected a close frame: {other:?}"),
-    }
+    // Opened before the upgrade, so the failure is an HTTP answer the CLI prints.
+    assert_eq!(stream(addr, Some(&gone), None).await.err(), Some(404));
     let ok = credential(&t, &admin).await;
     let mut ws = stream(addr, Some(&ok), None).await.unwrap();
     echo(&mut ws, "y", "postgres-0:5432|y".len()).await;
+}
+
+#[tokio::test]
+async fn a_refused_port_closes_with_the_reason() {
+    let (t, admin, _) = pf_app(Default::default()).await;
+    t.fake.kube.object(KubeKind::Pods, "apps", "refused");
+    let r = t
+        .send(req(
+            "POST",
+            "/api/v1/envs/k/k8s/pods/apps/refused/port-forward",
+            Some(json!({"port": 81})),
+            Some(&admin),
+        ))
+        .await;
+    let cred = redeem(&t, r.json["ticket"].as_str().unwrap()).await.json["credential"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let addr = t.serve().await;
+    let mut ws = stream(addr, Some(&cred), None).await.unwrap();
+    let mut reason = None;
+    while let Ok(Some(m)) = tokio::time::timeout(Duration::from_secs(5), ws.next()).await {
+        if let Ok(Message::Close(f)) = m {
+            reason = f.map(|f| f.reason.to_string());
+            break;
+        }
+    }
+    assert!(
+        reason
+            .as_deref()
+            .unwrap_or("")
+            .contains("connection refused"),
+        "{reason:?}"
+    );
+}
+
+#[tokio::test]
+async fn idle_streams_are_pinged() {
+    let config = fleetops_api::ApiConfig {
+        forward_ping: Duration::from_millis(100),
+        ..Default::default()
+    };
+    let (t, _, bob) = pf_app(config).await;
+    let cred = credential(&t, &bob).await;
+    let addr = t.serve().await;
+    let mut ws = stream(addr, Some(&cred), None).await.unwrap();
+    let got = tokio::time::timeout(Duration::from_secs(3), ws.next())
+        .await
+        .expect("nothing within 3s");
+    assert!(matches!(got, Some(Ok(Message::Ping(_)))), "{got:?}");
 }

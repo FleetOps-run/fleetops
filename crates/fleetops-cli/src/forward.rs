@@ -174,25 +174,41 @@ pub async fn run_with(
     tokio::pin!(expiry, shutdown);
     let cred = Arc::new(r.credential);
     loop {
-        tokio::select! {
+        // A slot first, then the next connection: past 16, connections wait
+        // in the kernel's backlog instead of as open sockets here.
+        let slot = tokio::select! {
             _ = &mut shutdown => return Ok(()),
             _ = &mut expiry => bail!("the port-forward session ended; create a new link in FleetOps"),
             Some(msg) = fatal.recv() => bail!("{msg}"),
-            conn = listener.accept() => {
-                let (conn, _) = conn?;
-                let (url, cred, tls, slots, fatal) =
-                    (ws_url.clone(), cred.clone(), tls.clone(), slots.clone(), fatal_tx.clone());
-                tokio::spawn(async move {
-                    let Ok(_slot) = slots.acquire_owned().await else { return };
-                    if let Err(e) = carry(conn, &url, &cred, tls).await {
-                        match e {
-                            Carry::Fatal(m) => { let _ = fatal.send(m).await; }
-                            Carry::Once(m) => eprintln!("connection failed: {m}"),
-                        }
-                    }
-                });
+            slot = slots.clone().acquire_owned() => slot.expect("the semaphore is never closed"),
+        };
+        let conn = tokio::select! {
+            _ = &mut shutdown => return Ok(()),
+            _ = &mut expiry => bail!("the port-forward session ended; create a new link in FleetOps"),
+            Some(msg) = fatal.recv() => bail!("{msg}"),
+            conn = listener.accept() => conn,
+        };
+        let conn = match conn {
+            Ok((c, _)) => c,
+            Err(e) => {
+                // Out of file descriptors or an aborted handshake: not fatal.
+                eprintln!("accept failed: {e}");
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                continue;
             }
-        }
+        };
+        let (url, cred, tls, fatal) = (ws_url.clone(), cred.clone(), tls.clone(), fatal_tx.clone());
+        tokio::spawn(async move {
+            let _slot = slot;
+            if let Err(e) = carry(conn, &url, &cred, tls).await {
+                match e {
+                    Carry::Fatal(m) => {
+                        let _ = fatal.send(m).await;
+                    }
+                    Carry::Once(m) => eprintln!("connection failed: {m}"),
+                }
+            }
+        });
     }
 }
 
@@ -203,58 +219,135 @@ enum Carry {
     Fatal(String),
 }
 
+/// The server answered `status` with `body`: one connection's error, or
+/// the end of the link.
+fn refused(status: u16, msg: String) -> Carry {
+    match status {
+        401 | 403 => Carry::Fatal(msg),
+        _ => Carry::Once(msg),
+    }
+}
+
+async fn connect(
+    url: &str,
+    cred: &str,
+    tls: Arc<rustls::ClientConfig>,
+) -> std::result::Result<
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>>,
+    Carry,
+> {
+    // A slot freed here may not be free on the server yet: retry a 429.
+    for attempt in 1..=5u64 {
+        let mut req = url
+            .into_client_request()
+            .map_err(|e| Carry::Fatal(e.to_string()))?;
+        req.headers_mut().insert(
+            HEADER,
+            cred.parse()
+                .map_err(|_| Carry::Fatal("bad credential".into()))?,
+        );
+        match tokio_tungstenite::connect_async_tls_with_config(
+            req,
+            None,
+            false,
+            Some(Connector::Rustls(tls.clone())),
+        )
+        .await
+        {
+            Ok((ws, _)) => return Ok(ws),
+            Err(WsError::Http(resp)) => {
+                let status = resp.status().as_u16();
+                if status == 429 && attempt < 5 {
+                    tokio::time::sleep(Duration::from_millis(100 * attempt)).await;
+                    continue;
+                }
+                let body = resp
+                    .body()
+                    .as_ref()
+                    .and_then(|b| {
+                        serde_json::from_slice::<ApiError>(b)
+                            .ok()
+                            .map(|e| e.message)
+                    })
+                    .or_else(|| {
+                        resp.body()
+                            .as_ref()
+                            .map(|b| String::from_utf8_lossy(b).into_owned())
+                    })
+                    .unwrap_or_default();
+                let msg = if body.is_empty() {
+                    format!("the server answered {status}")
+                } else {
+                    body
+                };
+                return Err(refused(status, msg));
+            }
+            Err(e) => return Err(Carry::Once(anyhow!(e).to_string())),
+        }
+    }
+    unreachable!("the last attempt returns")
+}
+
+/// Carries one local connection. The server's close reason (the pod side
+/// failed, access was removed, the session ended) is printed.
 async fn carry(
-    mut conn: TcpStream,
+    conn: TcpStream,
     url: &str,
     cred: &str,
     tls: Arc<rustls::ClientConfig>,
 ) -> std::result::Result<(), Carry> {
-    let mut req = url
-        .into_client_request()
-        .map_err(|e| Carry::Fatal(e.to_string()))?;
-    req.headers_mut().insert(
-        HEADER,
-        cred.parse()
-            .map_err(|_| Carry::Fatal("bad credential".into()))?,
-    );
-    let ws = match tokio_tungstenite::connect_async_tls_with_config(
-        req,
-        None,
-        false,
-        Some(Connector::Rustls(tls)),
-    )
-    .await
-    {
-        Ok((ws, _)) => ws,
-        Err(WsError::Http(resp)) => {
-            let status = resp.status();
-            let body = resp
-                .body()
-                .as_ref()
-                .and_then(|b| {
-                    serde_json::from_slice::<ApiError>(b)
-                        .ok()
-                        .map(|e| e.message)
-                })
-                .or_else(|| {
-                    resp.body()
-                        .as_ref()
-                        .map(|b| String::from_utf8_lossy(b).into_owned())
-                })
-                .unwrap_or_default();
-            let msg = if body.is_empty() {
-                format!("the server answered {status}")
-            } else {
-                body
-            };
-            return Err(match status.as_u16() {
-                401 | 403 => Carry::Fatal(msg),
-                _ => Carry::Once(msg),
-            });
+    use futures_util::{SinkExt, StreamExt};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio_tungstenite::tungstenite::{protocol::frame::coding::CloseCode, Message};
+    let ws = connect(url, cred, tls).await?;
+    let (mut tx, mut rx) = ws.split();
+    let (mut local_r, mut local_w) = conn.into_split();
+    let mut buf = vec![0u8; 32 * 1024];
+    let mut local_done = false;
+    loop {
+        tokio::select! {
+            n = local_r.read(&mut buf), if !local_done => match n {
+                Ok(0) | Err(_) => {
+                    // The local side hung up (or only shut its sending side:
+                    // that can't be told apart, so half-close is not kept,
+                    // as with kubectl port-forward). Close the stream and let
+                    // the server's Close end the loop.
+                    local_done = true;
+                    let _ = tx.send(Message::Close(None)).await;
+                }
+                Ok(n) => {
+                    if tx.send(Message::Binary(buf[..n].to_vec().into())).await.is_err() {
+                        return Ok(());
+                    }
+                }
+            },
+            m = rx.next() => match m {
+                Some(Ok(Message::Binary(b))) => {
+                    if local_w.write_all(&b).await.is_err() {
+                        return Ok(());
+                    }
+                }
+                Some(Ok(Message::Close(frame))) => {
+                    let _ = local_w.shutdown().await;
+                    return match frame {
+                        Some(f) if f.code != CloseCode::Normal && !f.reason.is_empty() => {
+                            let reason = f.reason.to_string();
+                            if f.code == CloseCode::Policy {
+                                Err(Carry::Fatal(reason))
+                            } else {
+                                Err(Carry::Once(reason))
+                            }
+                        }
+                        _ => Ok(()),
+                    };
+                }
+                None | Some(Err(_)) => {
+                    let _ = local_w.shutdown().await;
+                    return Ok(());
+                }
+                // Pings are answered by the websocket library.
+                Some(Ok(_)) => {}
+            },
         }
-        Err(e) => return Err(Carry::Once(anyhow!(e).to_string())),
-    };
-    let mut io = crate::ws_io::io(ws);
-    let _ = tokio::io::copy_bidirectional(&mut conn, &mut io).await;
-    Ok(())
+    }
 }

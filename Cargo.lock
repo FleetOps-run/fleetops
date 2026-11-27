@@ -1687,7 +1687,6 @@ version = "1.4.1"
 dependencies = [
  "anyhow",
  "axum",
- "bytes",
  "clap",
  "futures-util",
  "reqwest 0.12.28",

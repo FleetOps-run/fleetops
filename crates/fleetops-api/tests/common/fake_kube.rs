@@ -437,8 +437,25 @@ impl KubeOps for FakeKube {
         _ns: &str,
         pod: &str,
         port: u16,
-    ) -> Result<fleetops_core::kube::PortStream> {
+    ) -> Result<fleetops_core::kube::PortForward> {
+        use futures_util::FutureExt;
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        if pod == "refused" {
+            // Nothing listens: the stream ends and the kubelet says why.
+            let (ours, _theirs) = tokio::io::duplex(64);
+            return Ok(
+                fleetops_core::kube::PortForward {
+                    stream: Box::new(ours),
+                    error:
+                        Some(
+                            async move {
+                                Some(format!("error forwarding port {port}: connection refused"))
+                            }
+                            .boxed(),
+                        ),
+                },
+            );
+        }
         if pod == "gone" {
             return Err(fleetops_core::Error::NotFound(format!("pod {pod}")));
         }
@@ -463,7 +480,10 @@ impl KubeOps for FakeKube {
                 }
             }
         });
-        Ok(Box::new(ours))
+        Ok(fleetops_core::kube::PortForward {
+            stream: Box::new(ours),
+            error: None,
+        })
     }
 
     async fn exec_start(&self, ns: &str, pod: &str, opts: &ExecOptions) -> Result<KubeExec> {
