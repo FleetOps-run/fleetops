@@ -45,6 +45,9 @@ pub struct EeConfig {
     /// Replaces HTTP and SMTP for notifications; tests only.
     #[doc(hidden)]
     pub notify_transport: Option<Arc<dyn notify::send::Transport>>,
+    /// Replaces syslog and HTTP for audit forwarding; tests only.
+    #[doc(hidden)]
+    pub siem_sender: Option<Arc<dyn siem::send::Sender>>,
 }
 
 /// What the server wires in (editions spec §3.4).
@@ -70,6 +73,9 @@ pub struct EeParts {
     /// Notifications; spawn [`notify::notifier::Notifier::run`] with the
     /// finished app state. Already listening to `scan_engine`.
     pub notifier: Arc<notify::notifier::Notifier>,
+    /// Audit forwarding; spawn [`siem::forwarder::Forwarder::run`] with the
+    /// finished app state.
+    pub forwarder: Arc<siem::forwarder::Forwarder>,
 }
 
 /// The Enterprise routes, for the OpenAPI document (no license attached).
@@ -186,6 +192,7 @@ pub async fn init_with_keys(
     let scan_engine = scan::engine::Engine::new(config.scan_backend);
     scan_engine.set_events(Arc::new(notify::matcher::Matcher));
     let notifier = notify::notifier::Notifier::new(config.notify_transport);
+    let forwarder = siem::forwarder::Forwarder::new(config.siem_sender);
     state.load(store).await?;
     Ok(EeParts {
         entitlements: state.clone(),
@@ -208,6 +215,7 @@ pub async fn init_with_keys(
         background: Box::pin(watch(state)),
         scan_engine,
         notifier,
+        forwarder,
     })
 }
 

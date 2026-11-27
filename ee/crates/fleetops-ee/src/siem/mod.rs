@@ -1,6 +1,7 @@
 //! Audit forwarding to a SIEM, and how long the audit log is kept.
 
 pub mod db;
+pub mod forwarder;
 pub mod model;
 pub mod send;
 

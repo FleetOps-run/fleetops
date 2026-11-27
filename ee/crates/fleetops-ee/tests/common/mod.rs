@@ -39,6 +39,7 @@ pub struct Ee {
     pub state: AppState,
     pub scan: Arc<fleetops_ee::scan::engine::Engine>,
     pub notifier: Arc<fleetops_ee::notify::notifier::Notifier>,
+    pub forwarder: Arc<fleetops_ee::siem::forwarder::Forwarder>,
 }
 
 /// Environments that are only names and kinds: enough for the scan engine
@@ -135,6 +136,7 @@ async fn ee_app_inner(
             sso_endpoints: Default::default(),
             scan_backend: Some(backend),
             notify_transport: transport,
+            siem_sender: None,
         },
         vec![key.verifying_key()],
     )
@@ -152,6 +154,7 @@ async fn ee_app_inner(
         state,
         scan: parts.scan_engine,
         notifier: parts.notifier,
+        forwarder: parts.forwarder,
     }
 }
 
@@ -229,6 +232,28 @@ pub async fn ee_app_full(
     config: ApiConfig,
     endpoints: fleetops_ee::sso::flow::Endpoints,
 ) -> Ee {
+    ee_app_all(key, file, config, endpoints, None).await
+}
+
+/// A licensed-key app whose audit forwarding sends through `sender`.
+pub async fn ee_siem_app(key: &SigningKey, sender: Arc<dyn fleetops_ee::siem::send::Sender>) -> Ee {
+    ee_app_all(
+        key,
+        None,
+        ApiConfig::default(),
+        Default::default(),
+        Some(sender),
+    )
+    .await
+}
+
+async fn ee_app_all(
+    key: &SigningKey,
+    file: Option<PathBuf>,
+    config: ApiConfig,
+    endpoints: fleetops_ee::sso::flow::Endpoints,
+    siem_sender: Option<Arc<dyn fleetops_ee::siem::send::Sender>>,
+) -> Ee {
     // File-backed when there is a data directory: a backup snapshot needs it.
     let store = match &config.data_dir {
         Some(d) => Store::open(&d.join("fleetops.db")).await.unwrap(),
@@ -241,6 +266,7 @@ pub async fn ee_app_full(
             sso_endpoints: endpoints,
             scan_backend: None,
             notify_transport: None,
+            siem_sender,
         },
         vec![key.verifying_key()],
     )
@@ -258,6 +284,7 @@ pub async fn ee_app_full(
         state,
         scan: parts.scan_engine,
         notifier: parts.notifier,
+        forwarder: parts.forwarder,
     }
 }
 
