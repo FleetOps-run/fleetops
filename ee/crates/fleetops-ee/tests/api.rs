@@ -67,7 +67,8 @@ async fn admin_installs_a_license_and_features_turn_on() {
             "sso",
             "backup",
             "vuln_scan",
-            "notifications"
+            "notifications",
+            "audit_sinks"
         ])
     );
     let r = ee.send("GET", "/api/v1/edition", None, Some(&admin)).await;
@@ -80,7 +81,8 @@ async fn admin_installs_a_license_and_features_turn_on() {
             "sso",
             "backup",
             "vuln_scan",
-            "notifications"
+            "notifications",
+            "audit_sinks"
         ])
     );
     assert!(ee.actions().await.contains(&"license.update".to_string()));
@@ -193,7 +195,8 @@ async fn delete_falls_back_to_file_then_none() {
             "sso",
             "backup",
             "vuln_scan",
-            "notifications"
+            "notifications",
+            "audit_sinks"
         ]),
         "back on the file's license, which names no features"
     );

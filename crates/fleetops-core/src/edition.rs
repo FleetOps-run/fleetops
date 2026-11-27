@@ -33,6 +33,9 @@ pub enum Feature {
     /// Notifications to Slack, email and webhooks (`/ee/notifications`).
     /// Every active license has it.
     Notifications,
+    /// Audit forwarding to a SIEM and longer audit retention
+    /// (`/ee/audit/sinks`, `/ee/audit/retention`). Every active license has it.
+    AuditSinks,
 }
 
 impl Feature {
@@ -44,6 +47,7 @@ impl Feature {
         Feature::Backup,
         Feature::VulnScan,
         Feature::Notifications,
+        Feature::AuditSinks,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -55,6 +59,7 @@ impl Feature {
             Feature::Backup => "backup",
             Feature::VulnScan => "vuln_scan",
             Feature::Notifications => "notifications",
+            Feature::AuditSinks => "audit_sinks",
         }
     }
 

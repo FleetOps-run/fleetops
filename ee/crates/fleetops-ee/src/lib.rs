@@ -11,6 +11,7 @@ pub mod notify;
 pub mod roles;
 pub mod routes;
 pub mod scan;
+pub mod siem;
 pub mod sso;
 pub mod state;
 pub mod teams;
