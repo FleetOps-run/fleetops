@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatAgo, formatCores, formatCpu, formatMemory, formatPercent } from "@/lib/format";
 import { KubeActions } from "./KubeActions";
 import { WorkloadTerminal } from "./WorkloadTerminal";
+import { PortForwardButton } from "./PortForwardDialog";
 import { KubeHealth } from "./KubeHealth";
 import { asKind, CLUSTER_SCOPED, KIND_COLUMNS, KIND_LABEL, LINK_COLUMNS, POD_LOG_KINDS, READ_ONLY } from "./kinds";
 import { useKubeUsage, usageKey } from "./usage";
@@ -86,6 +87,7 @@ export function KubeObjectPage() {
         o && (
           <div className="flex items-center gap-2">
             {isWorkload && canShell && <WorkloadTerminal env={env} kind={kind} ns={ns} name={name} />}
+            {isPod && canShell && <PortForwardButton env={env} ns={ns} name={name} yaml={o.yaml} />}
             <KubeActions env={env} kind={kind} ns={ns} name={name} row={o.row} />
           </div>
         )
