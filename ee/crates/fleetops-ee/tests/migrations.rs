@@ -136,7 +136,14 @@ async fn scan_tables_exist() {
         .unwrap();
         assert_eq!(n, 1, "{table}.platform");
     }
-    assert_eq!(fleetops_ee::db::migration_max(), 1_000_008);
+    let n: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'api_tokens'",
+    )
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(n, 1, "api_tokens");
+    assert_eq!(fleetops_ee::db::migration_max(), 1_000_009);
 }
 
 #[tokio::test]
