@@ -3,6 +3,7 @@
 pub mod db;
 pub mod forwarder;
 pub mod model;
+pub mod routes;
 pub mod send;
 
 use fleetops_core::{Error, Result};

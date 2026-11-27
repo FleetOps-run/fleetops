@@ -174,6 +174,13 @@ pub fn api_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(notify::routes::get_smtp, notify::routes::put_smtp))
         .routes(routes!(notify::routes::test_smtp))
         .routes(routes!(notify::routes::list_deliveries))
+        .routes(routes!(siem::routes::list, siem::routes::create))
+        .routes(routes!(siem::routes::update, siem::routes::delete))
+        .routes(routes!(siem::routes::test))
+        .routes(routes!(
+            siem::routes::get_retention,
+            siem::routes::put_retention
+        ))
 }
 
 pub async fn init(store: &Store, config: EeConfig) -> Result<EeParts> {
@@ -201,6 +208,7 @@ pub async fn init_with_keys(
             .layer(Extension(runner.clone()))
             .layer(Extension(scan_engine.clone()))
             .layer(Extension(notifier.clone()))
+            .layer(Extension(forwarder.clone()))
             .layer(Extension(Arc::new(sso::flow::Runtime::new(
                 config.sso_endpoints,
             )))),
