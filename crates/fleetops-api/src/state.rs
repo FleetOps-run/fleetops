@@ -68,6 +68,11 @@ pub struct ApiConfig {
     /// The API server of the cluster FleetOps runs in, when it runs in a
     /// pod: a kube-local environment needs it.
     pub in_cluster_url: Option<String>,
+    /// How often an open port-forward re-checks its user's access.
+    pub forward_recheck: Duration,
+    /// How often an open port-forward pings its client, so proxies in
+    /// between do not drop an idle connection.
+    pub forward_ping: Duration,
 }
 
 impl Default for ApiConfig {
@@ -91,6 +96,8 @@ impl Default for ApiConfig {
             agent_ca_pem: None,
             swarm_task_poll: Duration::from_secs(3),
             in_cluster_url: None,
+            forward_recheck: Duration::from_secs(60),
+            forward_ping: Duration::from_secs(25),
         }
     }
 }
@@ -139,6 +146,8 @@ pub struct AppState {
     pub hook_limiter: Arc<LoginLimiter>,
     /// Webhook requests per client address, across stacks.
     pub hook_address_limiter: Arc<LoginLimiter>,
+    /// Port-forward tickets and credentials.
+    pub forwards: Arc<crate::forward::Forwards>,
 }
 
 impl AppState {
@@ -173,6 +182,7 @@ impl AppState {
                 crate::routes::stack_hooks::HOOK_MAX_PER_ADDRESS,
                 crate::routes::stack_hooks::HOOK_WINDOW,
             )),
+            forwards: Arc::default(),
         }
     }
 

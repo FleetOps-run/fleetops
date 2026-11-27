@@ -42,7 +42,8 @@ spec:
     - name: side
       image: busybox:1.37
       imagePullPolicy: IfNotPresent
-      command: [sh, -c, 'while true; do echo side; sleep 5; done']
+      # Also serves "pong" on 8080 for the port-forward test.
+      command: [sh, -c, 'mkdir -p /w && echo pong > /w/index.html && httpd -p 8080 -h /w; while true; do echo side; sleep 5; done']
 ---
 apiVersion: apps/v1
 kind: Deployment

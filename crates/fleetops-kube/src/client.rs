@@ -594,6 +594,24 @@ impl KubeOps for KubeClient {
         })
     }
 
+    async fn port_forward(
+        &self,
+        ns: &str,
+        pod: &str,
+        port: u16,
+    ) -> Result<fleetops_core::kube::PortForward> {
+        use futures_util::FutureExt;
+        let mut pf = timed(self.pods(ns).portforward(pod, &[port])).await?;
+        let stream = pf
+            .take_stream(port)
+            .ok_or_else(|| Error::Internal("port-forward gave no stream".into()))?;
+        let error = pf.take_error(port).map(|f| f.boxed());
+        Ok(fleetops_core::kube::PortForward {
+            stream: Box::new(Forwarded { _pf: pf, stream }),
+            error,
+        })
+    }
+
     async fn exec_start(&self, ns: &str, pod: &str, opts: &ExecOptions) -> Result<KubeExec> {
         let pods = self.pods(ns);
         let container = match &opts.container {
@@ -1138,4 +1156,42 @@ pub fn manual_job(cj: &CronJob, now: i64) -> Result<Job> {
         spec: template.spec,
         status: None,
     })
+}
+
+/// A port-forward stream that keeps its forwarder alive while it is used.
+struct Forwarded<S> {
+    _pf: kube::api::Portforwarder,
+    stream: S,
+}
+
+impl<S: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for Forwarded<S> {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.stream).poll_read(cx, buf)
+    }
+}
+
+impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for Forwarded<S> {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        std::pin::Pin::new(&mut self.stream).poll_write(cx, buf)
+    }
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.stream).poll_flush(cx)
+    }
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.stream).poll_shutdown(cx)
+    }
 }

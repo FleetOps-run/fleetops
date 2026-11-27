@@ -22,6 +22,12 @@ docker pull -q --platform "$plat" busybox:1.37 >/dev/null
 docker save --platform "$plat" busybox:1.37 |
   docker exec -i "$node" ctr --namespace=k8s.io images import --digests --snapshotter=overlayfs - >/dev/null 2>&1 ||
   echo "busybox preload failed; the cluster will pull it"
+# A pod's command cannot change in place: recreate a ticker from before its
+# sidecar served HTTP (the port-forward test needs it).
+if kubectl -n fleetops-it get pod ticker >/dev/null 2>&1 &&
+   ! kubectl -n fleetops-it get pod ticker -o jsonpath='{.spec.containers[1].command}' | grep -q httpd; then
+  kubectl -n fleetops-it delete pod ticker --wait=true >/dev/null
+fi
 kubectl apply -f "$(dirname "$0")/kube-it-fixtures.yaml" >/dev/null
 kubectl wait --for=condition=Established crd/widgets.example.fleetops.io --timeout=60s >/dev/null
 kubectl -n fleetops-it rollout status deploy/web --timeout=120s >/dev/null
