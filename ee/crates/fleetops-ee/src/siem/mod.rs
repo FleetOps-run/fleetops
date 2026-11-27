@@ -2,6 +2,7 @@
 
 pub mod db;
 pub mod model;
+pub mod send;
 
 use fleetops_core::{Error, Result};
 use model::{SinkKind, SinkSecrets, SinkSettings, SyslogTransport};
