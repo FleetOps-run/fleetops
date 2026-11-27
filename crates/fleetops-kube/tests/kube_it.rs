@@ -1229,3 +1229,29 @@ async fn image_uses_lists_pods_and_idle_templates() {
     ops.delete(KubeKind::Deployments, NS, &dep).await.unwrap();
     ops.delete(KubeKind::CronJobs, NS, &cron).await.unwrap();
 }
+
+#[tokio::test]
+async fn port_forward_reaches_a_pod_port() {
+    let ops = common::ops();
+    let mut s = timeout(WAIT, ops.port_forward(NS, "ticker", 8080))
+        .await
+        .unwrap()
+        .unwrap();
+    s.write_all(b"GET /index.html HTTP/1.0\r\n\r\n")
+        .await
+        .unwrap();
+    let mut out = Vec::new();
+    timeout(WAIT, s.read_to_end(&mut out))
+        .await
+        .unwrap()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out);
+    assert!(text.starts_with("HTTP/1."), "{text}");
+    assert!(text.contains("pong"), "{text}");
+}
+
+#[tokio::test]
+async fn port_forward_to_a_missing_pod_is_an_error() {
+    let ops = common::ops();
+    assert!(ops.port_forward(NS, "no-such-pod", 8080).await.is_err());
+}
