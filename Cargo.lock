@@ -1761,6 +1761,7 @@ dependencies = [
  "ldap3",
  "lettre",
  "rand 0.10.4",
+ "rcgen",
  "reqwest 0.12.28",
  "rustls",
  "rusty-s3",
@@ -1772,12 +1773,14 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "tokio-rustls",
  "tokio-util",
  "tower",
  "tracing",
  "url",
  "utoipa",
  "utoipa-axum",
+ "webpki-roots",
  "wiremock",
 ]
 

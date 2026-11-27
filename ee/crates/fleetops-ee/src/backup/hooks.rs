@@ -23,6 +23,7 @@ pub fn sealed() -> Vec<SealedColumn> {
             "notify-dest:{id}",
         ),
         SealedColumn::new("ee_notify_smtp", "password", "id", "notify-smtp:{id}"),
+        SealedColumn::new("ee_audit_sinks", "secrets", "id", "audit-sink:{id}"),
     ]
 }
 

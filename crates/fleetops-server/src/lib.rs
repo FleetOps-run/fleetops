@@ -69,6 +69,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
                 sso_endpoints: Default::default(),
                 scan_backend: None,
                 notify_transport: None,
+                siem_sender: None,
             },
         )
         .await?;
@@ -85,6 +86,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
         ));
         tokio::spawn(ee.scan_engine.run(state.clone()));
         tokio::spawn(ee.notifier.run(state.clone()));
+        tokio::spawn(ee.forwarder.run(state.clone()));
         fleetops_api::app_with(state, static_files::router(), ee.routes)
     };
     #[cfg(not(feature = "enterprise"))]

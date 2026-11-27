@@ -45,14 +45,17 @@ serde_json.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tokio-rustls.workspace = true
 tokio-util = { workspace = true, features = ["io"] }
 tar.workspace = true
 tracing.workspace = true
 url.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
+webpki-roots.workspace = true
 
 [dev-dependencies]
+rcgen.workspace = true
 fleetops-docker.workspace = true
 fleetops-kube.workspace = true
 http-body-util.workspace = true
