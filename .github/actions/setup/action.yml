@@ -23,6 +23,9 @@ inputs:
   free-disk:
     description: Remove preinstalled SDKs the build never uses
     default: "false"
+  cache-key:
+    description: Extra key for the Rust cache, for jobs that build different targets on the same OS
+    default: ""
 
 runs:
   using: composite
@@ -37,6 +40,8 @@ runs:
     # rustup reads rust-toolchain.toml (stable, with rustfmt and clippy).
     - if: inputs.rust == 'true'
       uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      with:
+        key: ${{ inputs.cache-key }}
 
     - if: inputs.web == 'true'
       uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1

@@ -431,6 +431,65 @@ impl KubeOps for FakeKube {
             truncated: false,
         })
     }
+    /// Echoes, after `"{pod}:{port}|"`; pod `gone` does not exist.
+    async fn port_forward(
+        &self,
+        _ns: &str,
+        pod: &str,
+        port: u16,
+    ) -> Result<fleetops_core::kube::PortForward> {
+        use futures_util::FutureExt;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        if pod == "refused" {
+            // Nothing listens: the stream ends and the kubelet says why.
+            let (ours, _theirs) = tokio::io::duplex(64);
+            return Ok(
+                fleetops_core::kube::PortForward {
+                    stream: Box::new(ours),
+                    error:
+                        Some(
+                            async move {
+                                // As long as a real kubelet's message.
+                                Some(format!(
+                                    "error forwarding port {port} to pod {}, uid : failed to execute portforward in network namespace: failed to connect to localhost:{port}: connection refused",
+                                    "ab".repeat(32)
+                                ))
+                            }
+                            .boxed(),
+                        ),
+                },
+            );
+        }
+        if pod == "gone" {
+            return Err(fleetops_core::Error::NotFound(format!("pod {pod}")));
+        }
+        let (ours, mut theirs) = tokio::io::duplex(64 * 1024);
+        let prefix = format!("{pod}:{port}|");
+        tokio::spawn(async move {
+            let mut buf = vec![0u8; 16 * 1024];
+            let mut first = true;
+            loop {
+                let n = match theirs.read(&mut buf).await {
+                    Ok(0) | Err(_) => return,
+                    Ok(n) => n,
+                };
+                if first {
+                    first = false;
+                    if theirs.write_all(prefix.as_bytes()).await.is_err() {
+                        return;
+                    }
+                }
+                if theirs.write_all(&buf[..n]).await.is_err() {
+                    return;
+                }
+            }
+        });
+        Ok(fleetops_core::kube::PortForward {
+            stream: Box::new(ours),
+            error: None,
+        })
+    }
+
     async fn exec_start(&self, ns: &str, pod: &str, opts: &ExecOptions) -> Result<KubeExec> {
         self.find(KubeKind::Pods, ns, pod)?;
         let (out_tx, out_rx) = mpsc::channel(16);

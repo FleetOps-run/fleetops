@@ -3,7 +3,8 @@ name: Release
 # A tag vX.Y.Z, matching the workspace version in Cargo.toml, publishes the
 # multi-arch Community, Enterprise and agent images to Docker Hub and the
 # GitHub Container Registry, and a GitHub release with static linux binaries
-# of each and SHA-256 checksums. Needs DOCKERHUB_USERNAME and DOCKERHUB_TOKEN
+# of each and SHA-256 checksums, plus fleetops-cli for linux, macOS and
+# Windows. Needs DOCKERHUB_USERNAME and DOCKERHUB_TOKEN
 # as secrets of the Production environment; GHCR uses the job's token. A
 # package pushed to GHCR for the first time is private: make it public once
 # in its package settings.
@@ -175,6 +176,7 @@ jobs:
           - \`$AGENT_IMAGE:$VERSION\`: the agent for remote hosts and clusters
 
           Static linux binaries of each, with SHA-256 checksums, are attached below.
+          \`fleetops-cli\` (port-forward from your machine) is attached for linux, macOS and Windows.
 
           Helm chart \`fleetops $VERSION\`: \`oci://$GHCR/charts/fleetops\`, or \`helm repo add fleetops https://fleetops-run.github.io/fleetops\`.
           Its default values are attached as \`fleetops-values.yaml\`; a starter helmfile and values file are in \`deploy/helmfile/\`.
@@ -214,3 +216,51 @@ jobs:
           git -C pages add index.yaml .nojekyll
           git -C pages commit -m "helm: fleetops $VERSION"
           git -C pages push origin gh-pages
+
+  # fleetops-cli for the machines people run psql and friends on: each build
+  # attaches its archive and checksum to the release made above.
+  cli:
+    name: fleetops-cli (${{ matrix.target }})
+    needs: release
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-latest, name: linux-amd64 }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm, name: linux-arm64 }
+          - { target: aarch64-apple-darwin, os: macos-14, name: darwin-arm64 }
+          - { target: x86_64-apple-darwin, os: macos-14, name: darwin-amd64 }
+          - { target: x86_64-pc-windows-msvc, os: windows-latest, name: windows-amd64, exe: .exe }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+        with:
+          web: "false"
+          cache-key: ${{ matrix.target }}
+      - if: contains(matrix.target, 'musl')
+        shell: bash
+        run: sudo apt-get update -q && sudo apt-get install -qy musl-tools
+      - name: Build
+        shell: bash
+        env:
+          # musl-tools installs only musl-gcc; cc would otherwise look for
+          # <arch>-linux-musl-gcc (ring needs a C compiler).
+          CC_x86_64_unknown_linux_musl: musl-gcc
+          CC_aarch64_unknown_linux_musl: musl-gcc
+        run: |
+          rustup target add ${{ matrix.target }}
+          cargo build --release --locked -p fleetops-cli --target ${{ matrix.target }}
+      - name: Attach to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          name="fleetops-cli-$GITHUB_REF_NAME-${{ matrix.name }}${{ matrix.exe }}"
+          mkdir dist
+          cp "target/${{ matrix.target }}/release/fleetops-cli${{ matrix.exe }}" "dist/$name"
+          cd dist
+          if command -v sha256sum >/dev/null; then sha256sum "$name" > "$name.sha256"; else shasum -a 256 "$name" > "$name.sha256"; fi
+          gh release upload "$GITHUB_REF_NAME" "$name" "$name.sha256" --clobber

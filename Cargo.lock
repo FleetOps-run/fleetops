@@ -1682,6 +1682,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "fleetops-cli"
+version = "1.4.1"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "futures-util",
+ "reqwest 0.12.28",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite 0.30.0",
+ "webpki-roots",
+]
+
+[[package]]
 name = "fleetops-core"
 version = "1.4.1"
 dependencies = [

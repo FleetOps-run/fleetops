@@ -139,6 +139,7 @@ Installed with the Helm chart, FleetOps manages the cluster it runs in as the **
 - *Edit YAML* and *Create*, always as a dry run shown as a diff before anything is written.
 - An overview that leads with what needs attention: failing pods, workloads short of replicas, failed Helm releases and nodes not ready.
 - Pod and workload logs, terminals, scale, restart, suspend and resume, cordon, and run a CronJob now, one object or a selection at a time.
+- Port-forward: reach a pod's port from your machine with `fleetops-cli`, so `psql`, `redis-cli` or a browser on `localhost` connect to it. The pod page gives a single-use command; the forward needs Shell on the pod and is audited. See [docs/port-forward.md](docs/port-forward.md).
 - CPU and memory from metrics-server.
 - **Helm:** releases with history, values and manifest; rollback and uninstall after a reviewed diff; install and upgrade from repositories and OCI registries.
 
@@ -274,6 +275,7 @@ To report a vulnerability, see [SECURITY.md](SECURITY.md). Please don't open a p
 ## Documentation
 
 - [Kubernetes and Helm](docs/kubernetes.md)
+- [Port-forward](docs/port-forward.md): `fleetops-cli`, reaching a pod's port from your machine
 - [Docker Swarm](docs/swarm.md): adding a swarm, FleetOps inside or outside it, stacks, key rotation
 - [Single sign-on](docs/sso.md): connecting Microsoft, Google, GitHub and OpenID Connect providers
 - [Security scanning](docs/security-scanning.md): image vulnerability scanning with Trivy, the patch queue, mirrors for air-gapped environments

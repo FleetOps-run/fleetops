@@ -1058,6 +1058,25 @@ export type FindingView = {
     vuln_id: string;
 };
 
+export type ForwardBody = {
+    /**
+     * The pod's port, 1-65535.
+     */
+    port: number;
+};
+
+export type ForwardTicket = {
+    expires_at: number;
+    /**
+     * `FLEETOPS_PUBLIC_URL`, when set: the server `fleetops-cli` should use.
+     */
+    server?: string | null;
+    /**
+     * Single use; give it to `fleetops-cli forward` within five minutes.
+     */
+    ticket: string;
+};
+
 export type GitBody = {
     auto_deploy?: boolean;
     branch: string;
@@ -2013,6 +2032,26 @@ export type RecreateResult = {
     backup_name: string;
     id: string;
     old_removed: boolean;
+};
+
+export type RedeemBody = {
+    ticket: string;
+};
+
+export type Redeemed = {
+    /**
+     * Send as `x-fleetops-forward` on each stream.
+     */
+    credential: string;
+    env: string;
+    expires_at: number;
+    /**
+     * Seconds the credential lasts; clients use this, not their own clock.
+     */
+    expires_in: number;
+    namespace: string;
+    pod: string;
+    port: number;
 };
 
 /**
@@ -7401,6 +7440,35 @@ export type KubeUsageResponses = {
 
 export type KubeUsageResponse = KubeUsageResponses[keyof KubeUsageResponses];
 
+export type CreatePortForwardData = {
+    body: ForwardBody;
+    path: {
+        env: string;
+        ns: string;
+        name: string;
+    };
+    query?: never;
+    url: '/api/v1/envs/{env}/k8s/pods/{ns}/{name}/port-forward';
+};
+
+export type CreatePortForwardErrors = {
+    /**
+     * Error: `{code, message, request_id}`
+     */
+    default: ErrorBody;
+};
+
+export type CreatePortForwardError = CreatePortForwardErrors[keyof CreatePortForwardErrors];
+
+export type CreatePortForwardResponses = {
+    /**
+     * The ticket
+     */
+    201: ForwardTicket;
+};
+
+export type CreatePortForwardResponse = CreatePortForwardResponses[keyof CreatePortForwardResponses];
+
 export type ListGenericKubeData = {
     body?: never;
     path: {
@@ -10395,6 +10463,56 @@ export type GetOpenApiResponses = {
      */
     200: unknown;
 };
+
+export type RedeemPortForwardData = {
+    body: RedeemBody;
+    path?: never;
+    query?: never;
+    url: '/api/v1/port-forward/redeem';
+};
+
+export type RedeemPortForwardErrors = {
+    /**
+     * Error: `{code, message, request_id}`
+     */
+    default: ErrorBody;
+};
+
+export type RedeemPortForwardError = RedeemPortForwardErrors[keyof RedeemPortForwardErrors];
+
+export type RedeemPortForwardResponses = {
+    /**
+     * The credential
+     */
+    200: Redeemed;
+};
+
+export type RedeemPortForwardResponse = RedeemPortForwardResponses[keyof RedeemPortForwardResponses];
+
+export type PortForwardStreamData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/port-forward/stream';
+};
+
+export type PortForwardStreamErrors = {
+    /**
+     * Error: `{code, message, request_id}`
+     */
+    default: ErrorBody;
+};
+
+export type PortForwardStreamError = PortForwardStreamErrors[keyof PortForwardStreamErrors];
+
+export type PortForwardStreamResponses = {
+    /**
+     * Error: `{code, message, request_id}`
+     */
+    default: ErrorBody;
+};
+
+export type PortForwardStreamResponse = PortForwardStreamResponses[keyof PortForwardStreamResponses];
 
 export type StackWebhookData = {
     body?: never;

@@ -7067,6 +7067,79 @@
         ]
       }
     },
+    "/api/v1/envs/{env}/k8s/pods/{ns}/{name}/port-forward": {
+      "post": {
+        "tags": [
+          "kubernetes"
+        ],
+        "summary": "A single-use link for fleetops-cli to reach a pod's port (needs Shell on pods)",
+        "operationId": "createPortForward",
+        "parameters": [
+          {
+            "name": "env",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ns",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForwardBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "The ticket",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForwardTicket"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error: `{code, message, request_id}`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrf": [],
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/v1/envs/{env}/k8s/r/{group}/{version}/{resource}": {
       "get": {
         "tags": [
@@ -12476,6 +12549,82 @@
         ]
       }
     },
+    "/api/v1/port-forward/redeem": {
+      "post": {
+        "tags": [
+          "kubernetes"
+        ],
+        "summary": "Trade a port-forward ticket for a credential (fleetops-cli)",
+        "operationId": "redeemPortForward",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RedeemBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Redeemed"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error: `{code, message, request_id}`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrf": [],
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/port-forward/stream": {
+      "get": {
+        "tags": [
+          "kubernetes"
+        ],
+        "summary": "One TCP connection to the pod (websocket; fleetops-cli only, with x-fleetops-forward)",
+        "operationId": "portForwardStream",
+        "responses": {
+          "101": {
+            "description": "Switching protocols; binary frames carry the bytes"
+          },
+          "default": {
+            "description": "Error: `{code, message, request_id}`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/v1/stacks/hooks/{id}": {
       "post": {
         "tags": [
@@ -15895,6 +16044,44 @@
           }
         }
       },
+      "ForwardBody": {
+        "type": "object",
+        "required": [
+          "port"
+        ],
+        "properties": {
+          "port": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The pod's port, 1-65535.",
+            "minimum": 0
+          }
+        }
+      },
+      "ForwardTicket": {
+        "type": "object",
+        "required": [
+          "ticket",
+          "expires_at"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "server": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`FLEETOPS_PUBLIC_URL`, when set: the server `fleetops-cli` should use."
+          },
+          "ticket": {
+            "type": "string",
+            "description": "Single use; give it to `fleetops-cli forward` within five minutes."
+          }
+        }
+      },
       "GitBody": {
         "type": "object",
         "required": [
@@ -18281,6 +18468,58 @@
           },
           "old_removed": {
             "type": "boolean"
+          }
+        }
+      },
+      "RedeemBody": {
+        "type": "object",
+        "required": [
+          "ticket"
+        ],
+        "properties": {
+          "ticket": {
+            "type": "string"
+          }
+        }
+      },
+      "Redeemed": {
+        "type": "object",
+        "required": [
+          "credential",
+          "expires_in",
+          "env",
+          "namespace",
+          "pod",
+          "port",
+          "expires_at"
+        ],
+        "properties": {
+          "credential": {
+            "type": "string",
+            "description": "Send as `x-fleetops-forward` on each stream."
+          },
+          "env": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "expires_in": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Seconds the credential lasts; clients use this, not their own clock."
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "pod": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           }
         }
       },

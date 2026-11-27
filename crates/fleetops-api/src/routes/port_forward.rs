@@ -1,0 +1,401 @@
+//! Port-forward (port-forward plan): the browser mints a ticket for one pod
+//! port, `fleetops-cli` redeems it for a credential, and each local TCP
+//! connection is a websocket stream to the pod's port.
+
+use crate::{
+    auth::extract::CurrentUser,
+    authz::{authorize_env, deny_audited, effective_grant, Need},
+    error::ApiError,
+    extract::{ApiJson, ApiPath},
+    forward::{Target, FORWARD_HEADER},
+    routes::kube::{check_name, check_namespace, kube_for, KubeCtx},
+    ApiResult, AppState,
+};
+use axum::{
+    extract::{
+        ws::{CloseFrame, Message, WebSocket},
+        State, WebSocketUpgrade,
+    },
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
+    Json,
+};
+use fleetops_core::{
+    kube::{KubeOps, PortForward},
+    now_unix,
+    perm::{Permission, Row, Verb},
+    Error, Result,
+};
+use fleetops_store::NewAudit;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
+
+const SHELL: Permission = Permission::new(Row::Pods, Verb::Shell);
+const EXPIRED: &str = "this port-forward link has expired; create a new one in FleetOps";
+
+#[derive(Deserialize, IntoParams)]
+#[into_params(parameter_in = Path)]
+pub struct PodPath {
+    pub env: String,
+    pub ns: String,
+    pub name: String,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct ForwardBody {
+    /// The pod's port, 1-65535.
+    pub port: u32,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct ForwardTicket {
+    /// Single use; give it to `fleetops-cli forward` within five minutes.
+    pub ticket: String,
+    pub expires_at: i64,
+    /// `FLEETOPS_PUBLIC_URL`, when set: the server `fleetops-cli` should use.
+    pub server: Option<String>,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct RedeemBody {
+    pub ticket: String,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct Redeemed {
+    /// Send as `x-fleetops-forward` on each stream.
+    pub credential: String,
+    /// Seconds the credential lasts; clients use this, not their own clock.
+    pub expires_in: i64,
+    pub env: String,
+    pub namespace: String,
+    pub pod: String,
+    pub port: u16,
+    pub expires_at: i64,
+}
+
+#[utoipa::path(post, path = "/envs/{env}/k8s/pods/{ns}/{name}/port-forward", operation_id = "createPortForward",
+    tag = "kubernetes", summary = "A single-use link for fleetops-cli to reach a pod's port (needs Shell on pods)",
+    params(PodPath), request_body = ForwardBody,
+    responses((status = 201, description = "The ticket", body = ForwardTicket)))]
+pub async fn mint(
+    State(s): State<AppState>,
+    cu: CurrentUser,
+    ApiPath(p): ApiPath<PodPath>,
+    ApiJson(b): ApiJson<ForwardBody>,
+) -> ApiResult<(StatusCode, Json<ForwardTicket>)> {
+    check_namespace(&p.ns)?;
+    check_name(&p.name)?;
+    let port = u16::try_from(b.port)
+        .ok()
+        .filter(|p| *p > 0)
+        .ok_or_else(|| Error::Invalid("port must be 1-65535".into()))?;
+    let KubeCtx { env, grants, .. } = kube_for(&s, &cu, &p.env, Need::Perm(SHELL)).await?;
+    deny_audited(
+        &s,
+        &cu,
+        env.id(),
+        "pods.port_forward",
+        grants.check_ns(SHELL, &p.ns),
+    )
+    .await?;
+    let now = now_unix();
+    let ticket = s.forwards.mint(
+        Target {
+            user_id: cu.user.id,
+            env_id: env.id(),
+            env: p.env,
+            ns: p.ns,
+            pod: p.name,
+            port,
+        },
+        now,
+    );
+    Ok((
+        StatusCode::CREATED,
+        Json(ForwardTicket {
+            ticket,
+            expires_at: now + crate::forward::TICKET_SECS,
+            server: s.config.public_url.clone(),
+        }),
+    ))
+}
+
+#[utoipa::path(post, path = "/port-forward/redeem", operation_id = "redeemPortForward", tag = "kubernetes",
+    summary = "Trade a port-forward ticket for a credential (fleetops-cli)", request_body = RedeemBody,
+    responses((status = 200, description = "The credential", body = Redeemed)))]
+pub async fn redeem(
+    State(s): State<AppState>,
+    meta: crate::auth::extract::ClientMeta,
+    ApiJson(b): ApiJson<RedeemBody>,
+) -> ApiResult<Json<Redeemed>> {
+    let key = format!("pf-redeem:{}", meta.ip);
+    s.forwards
+        .redeem_limiter
+        .try_acquire(&key, std::time::Instant::now())?;
+    let now = now_unix();
+    let (credential, t, expires_at) = s
+        .forwards
+        .redeem(b.ticket.trim(), now)
+        .ok_or_else(|| Error::Unauthorized(EXPIRED.into()))?;
+    s.forwards.redeem_limiter.reset(&key);
+    let target = format!("pods/{}/{}", t.ns, t.pod);
+    let entry = NewAudit {
+        ts: now_unix(),
+        user_id: Some(t.user_id),
+        environment_id: Some(t.env_id),
+        action: "k8s.port_forward",
+        target_type: Some("k8s"),
+        target_id: Some(&target),
+        result: "success",
+        detail: Some(json!({"port": t.port})),
+    };
+    if let Err(e) = s.store.insert_audit(&entry).await {
+        tracing::error!(error = %e, "failed to write audit log");
+    }
+    Ok(Json(Redeemed {
+        credential,
+        expires_in: expires_at - now,
+        env: t.env,
+        namespace: t.ns,
+        pod: t.pod,
+        port: t.port,
+        expires_at,
+    }))
+}
+
+/// Whether the credential's user may still reach its pod: the kube ops to
+/// use, or why not (401 for the user, 403 for access, 503 for the cluster).
+async fn still_allowed(s: &AppState, t: &Target) -> Result<Arc<dyn KubeOps>> {
+    let user = match s.store.get_user(t.user_id).await {
+        Ok(u) => u,
+        Err(Error::NotFound(_)) => return Err(Error::Unauthorized(EXPIRED.into())),
+        Err(e) => return Err(e),
+    };
+    if user.disabled_at.is_some() {
+        return Err(Error::Unauthorized(EXPIRED.into()));
+    }
+    // By id, so a rename keeps the link; a deleted environment ends it.
+    let env = s
+        .envs
+        .get_by_id(t.env_id)
+        .ok_or_else(|| Error::Forbidden("the environment was removed".into()))?;
+    let grants = effective_grant(s, t.user_id, env.id()).await?;
+    authorize_env(&grants, env.name(), Need::Perm(SHELL)).map_err(|e| match e {
+        Error::NotFound(_) => {
+            Error::Forbidden("you no longer have access to this environment".into())
+        }
+        e => e,
+    })?;
+    grants.check_ns(SHELL, &t.ns)?;
+    env.kube().ok_or_else(|| {
+        Error::EnvUnavailable(format!("environment '{}' is unreachable", env.name()))
+    })
+}
+
+#[utoipa::path(get, path = "/port-forward/stream", operation_id = "portForwardStream", tag = "kubernetes",
+    summary = "One TCP connection to the pod (websocket; fleetops-cli only, with x-fleetops-forward)",
+    responses((status = 101, description = "Switching protocols; binary frames carry the bytes")))]
+pub async fn stream(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    ws: std::result::Result<
+        WebSocketUpgrade,
+        axum::extract::ws::rejection::WebSocketUpgradeRejection,
+    >,
+) -> Response {
+    let refuse = |e: Error| ApiError(e).into_response();
+    let Some(cred) = headers
+        .get(FORWARD_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned)
+    else {
+        return refuse(Error::Unauthorized(
+            "a port-forward credential is required".into(),
+        ));
+    };
+    let Some((target, expires_at)) = s.forwards.lookup(&cred, now_unix()) else {
+        return refuse(Error::Unauthorized(EXPIRED.into()));
+    };
+    // The slot first: in memory, so a full link costs no database work.
+    let Some(guard) = s.forwards.open_stream(&cred) else {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            format!(
+                "at most {} connections at once",
+                crate::forward::MAX_STREAMS
+            ),
+        )
+            .into_response();
+    };
+    let ops = match still_allowed(&s, &target).await {
+        Ok(ops) => ops,
+        Err(e) => return refuse(e),
+    };
+    let ws = match ws {
+        Ok(ws) => ws,
+        Err(r) => return crate::extract::rejection(r.status(), r.body_text()),
+    };
+    // Before the upgrade, so a missing pod is an answer the CLI can print.
+    let pf = match ops.port_forward(&target.ns, &target.pod, target.port).await {
+        Ok(pf) => pf,
+        Err(e) => return refuse(e),
+    };
+    ws.on_upgrade(move |socket| async move {
+        let _guard = guard;
+        run(s, cred, target, expires_at, pf, socket).await;
+    })
+}
+
+/// A WebSocket close reason holds at most 123 bytes.
+const CLOSE_REASON_MAX: usize = 123;
+
+fn close_frame(code: u16, reason: &str) -> Message {
+    let mut end = reason.len().min(CLOSE_REASON_MAX);
+    while !reason.is_char_boundary(end) {
+        end -= 1;
+    }
+    Message::Close(Some(CloseFrame {
+        code,
+        reason: reason[..end].to_string().into(),
+    }))
+}
+
+/// Whether a failed re-check means access is gone (close the stream), not
+/// a passing database or cluster error (keep it, check again later).
+pub(crate) fn access_gone(e: &Error) -> bool {
+    matches!(
+        e,
+        Error::Unauthorized(_) | Error::Forbidden(_) | Error::NotFound(_)
+    )
+}
+
+/// Carries bytes both ways until either side ends, pinging the client so
+/// proxies keep an idle connection, re-checking access, and closing with
+/// the kubelet's reason when the pod side fails.
+async fn run(
+    s: AppState,
+    cred: String,
+    t: Target,
+    expires_at: i64,
+    pf: PortForward,
+    socket: WebSocket,
+) {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let (mut tx, mut rx) = socket.split();
+    let (mut pod_r, mut pod_w) = tokio::io::split(pf.stream);
+    // Fused: once it has answered, it stays pending instead of panicking.
+    let pod_error = futures_util::FutureExt::fuse(async move {
+        match pf.error {
+            Some(f) => f.await,
+            None => std::future::pending().await,
+        }
+    });
+    tokio::pin!(pod_error);
+    let mut recheck = tokio::time::interval(s.config.forward_recheck);
+    recheck.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    recheck.tick().await;
+    let mut ping = tokio::time::interval(s.config.forward_ping);
+    ping.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    ping.tick().await;
+    let until = std::time::Duration::from_secs(expires_at.saturating_sub(now_unix()).max(0) as u64);
+    let expiry = tokio::time::sleep(until);
+    tokio::pin!(expiry);
+    let mut buf = vec![0u8; 32 * 1024];
+    let mut client_done = false;
+    loop {
+        tokio::select! {
+            n = pod_r.read(&mut buf) => match n {
+                Ok(0) | Err(_) => {
+                    // The kubelet may still be reporting why; give it a moment.
+                    let why = tokio::time::timeout(std::time::Duration::from_millis(500), &mut pod_error).await;
+                    match why {
+                        Ok(Some(e)) => {
+                            // The whole reason as text; the close frame's is capped.
+                            let _ = tx.send(Message::Text(e.clone().into())).await;
+                            let _ = tx.send(close_frame(1011, &e)).await;
+                        }
+                        _ => {
+                            let _ = tx.send(Message::Close(None)).await;
+                        }
+                    }
+                    return;
+                }
+                Ok(n) => {
+                    if tx.send(Message::Binary(buf[..n].to_vec().into())).await.is_err() {
+                        return;
+                    }
+                }
+            },
+            m = rx.next(), if !client_done => match m {
+                Some(Ok(Message::Binary(b))) => {
+                    if pod_w.write_all(&b).await.is_err() {
+                        return;
+                    }
+                }
+                Some(Ok(Message::Close(_))) | None | Some(Err(_)) => {
+                    // The client finished sending: half-close toward the pod
+                    // and keep reading its answer.
+                    let _ = pod_w.shutdown().await;
+                    client_done = true;
+                }
+                Some(Ok(_)) => {}
+            },
+            Some(e) = &mut pod_error => {
+                let _ = tx.send(Message::Text(e.clone().into())).await;
+                let _ = tx.send(close_frame(1011, &e)).await;
+                return;
+            }
+            _ = ping.tick() => {
+                if tx.send(Message::Ping(Vec::new().into())).await.is_err() {
+                    return;
+                }
+            }
+            _ = &mut expiry => {
+                let _ = tx.send(close_frame(1008, "the port-forward session ended")).await;
+                return;
+            }
+            _ = recheck.tick() => {
+                if s.forwards.lookup(&cred, now_unix()).is_none() {
+                    let _ = tx.send(close_frame(1008, "the port-forward session ended")).await;
+                    return;
+                }
+                match still_allowed(&s, &t).await {
+                    Ok(_) => {}
+                    Err(e) if access_gone(&e) => {
+                        let _ = tx.send(close_frame(1008, "access to this pod was removed")).await;
+                        return;
+                    }
+                    // A passing database or cluster error: keep the stream.
+                    Err(e) => tracing::warn!(error = %e, "port-forward re-check failed; keeping the stream"),
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_lost_access_ends_a_stream() {
+        assert!(access_gone(&Error::Forbidden("x".into())));
+        assert!(access_gone(&Error::Unauthorized("x".into())));
+        assert!(!access_gone(&Error::Internal("database is locked".into())));
+        assert!(!access_gone(&Error::EnvUnavailable("down".into())));
+    }
+
+    #[test]
+    fn close_reasons_fit_and_cut_on_a_character() {
+        let long = "é".repeat(100);
+        let Message::Close(Some(f)) = close_frame(1011, &long) else {
+            panic!("not a close frame")
+        };
+        assert!(f.reason.len() <= CLOSE_REASON_MAX);
+        assert!(f.reason.chars().all(|c| c == 'é'));
+    }
+}

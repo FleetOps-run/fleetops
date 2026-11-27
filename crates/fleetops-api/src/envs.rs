@@ -125,6 +125,16 @@ impl EnvRegistry {
             .ok_or_else(|| Error::NotFound(format!("environment '{name}'")))
     }
 
+    /// A stored environment by id: survives a rename.
+    pub fn get_by_id(&self, id: i64) -> Option<Arc<dyn Environment>> {
+        self.envs
+            .read()
+            .unwrap()
+            .values()
+            .find(|e| e.id() == id)
+            .cloned()
+    }
+
     /// An environment by name, or a Swarm node's view by `<env>@<node>`.
     pub fn get(&self, name: &str) -> Result<Arc<dyn Environment>> {
         let not_found = || Error::NotFound(format!("environment '{name}'"));
