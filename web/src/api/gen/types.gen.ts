@@ -1031,7 +1031,7 @@ export type ExecOptions = {
 /**
  * An Enterprise feature a license can grant.
  */
-export type Feature = 'audit_export' | 'teams' | 'rbac' | 'sso' | 'backup' | 'vuln_scan' | 'notifications';
+export type Feature = 'audit_export' | 'teams' | 'rbac' | 'sso' | 'backup' | 'vuln_scan' | 'notifications' | 'audit_sinks';
 
 export type FileKind = 'secret' | 'config';
 
@@ -1177,6 +1177,14 @@ export type GrantView = {
      * `row.verb` permissions, e.g. `volumes.delete`.
      */
     permissions: Array<string>;
+};
+
+export type HeaderBody = {
+    name: string;
+    /**
+     * Empty keeps the stored value for this name.
+     */
+    value?: string;
 };
 
 export type Health = {
@@ -2046,21 +2054,9 @@ export type RestoreRecentBody = {
     target_kind: TargetKind;
 };
 
-/**
- * How many backups each target keeps.
- */
 export type Retention = {
-    kind: 'count';
-    /**
-     * The newest N.
-     */
-    value: number;
-} | {
-    kind: 'days';
-    /**
-     * Those made in the last N days.
-     */
-    value: number;
+    days: number;
+    default_days?: number;
 };
 
 export type RevisionDetail = {
@@ -2496,6 +2492,70 @@ export type ShowBody = {
     chart: ChartRef;
 };
 
+export type SinkBody = {
+    /**
+     * Left out keeps the stored certificate; `""` removes it.
+     */
+    ca_pem?: string | null;
+    enabled?: boolean;
+    headers?: Array<HeaderBody>;
+    host?: string | null;
+    kind: SinkKind;
+    name: string;
+    port?: number | null;
+    start?: SinkStart | null;
+    /**
+     * Splunk HEC token; empty or left out keeps the stored one.
+     */
+    token?: string | null;
+    transport?: SyslogTransport | null;
+    /**
+     * Empty or left out keeps the stored URL.
+     */
+    url?: string | null;
+};
+
+export type SinkKind = 'syslog' | 'splunk_hec' | 'http';
+
+export type SinkStart = 'now' | 'all';
+
+/**
+ * A sink as the page shows it: never a secret.
+ */
+export type SinkView = {
+    /**
+     * Audit rows not sent yet.
+     */
+    behind: number;
+    ca_set: boolean;
+    /**
+     * The last audit id the receiver accepted.
+     */
+    cursor: number;
+    enabled: boolean;
+    /**
+     * Rows retention removed before this sink sent them.
+     */
+    gap_rows: number;
+    header_names: Array<string>;
+    id: number;
+    kind: SinkKind;
+    last_error?: string | null;
+    last_error_at?: number | null;
+    last_sent_at?: number | null;
+    name: string;
+    /**
+     * `host:port` for syslog, the URL's host otherwise.
+     */
+    target: string;
+    token_set: boolean;
+    transport?: SyslogTransport | null;
+    /**
+     * Whether a URL is stored; the URL itself is a secret.
+     */
+    url_set: boolean;
+};
+
 export type SmtpBody = {
     clear_password?: boolean;
     from_address: string;
@@ -2810,6 +2870,8 @@ export type SyncedMember = {
     connection: string;
     user_id: number;
 };
+
+export type SyslogTransport = 'udp' | 'tcp' | 'tls';
 
 export type TagBody = {
     repo: string;
@@ -3645,6 +3707,226 @@ export type ExportAuditResponses = {
 };
 
 export type ExportAuditResponse = ExportAuditResponses[keyof ExportAuditResponses];
+
+export type GetAuditRetentionData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/ee/audit/retention';
+};
+
+export type GetAuditRetentionErrors = {
+    /**
+     * Error: `{code, message, request_id}`
+     */
+    default: ErrorBody;
+};
+
+export type GetAuditRetentionError = GetAuditRetentionErrors[keyof GetAuditRetentionErrors];
+
+export type GetAuditRetentionResponses = {
+    /**
+     * Retention
+     */
+    200: Retention;
+};
+
+export type GetAuditRetentionResponse = GetAuditRetentionResponses[keyof GetAuditRetentionResponses];
+
+export type PutAuditRetentionData = {
+    body: Retention;
+    path?: never;
+    query?: never;
+    url: '/api/v1/ee/audit/retention';
+};
+
+export type PutAuditRetentionErrors = {
+    /**
+     * Error: `{code, message, request_id}`
+     */
+    default: ErrorBody;
+};
+
+export type PutAuditRetentionError = PutAuditRetentionErrors[keyof PutAuditRetentionErrors];
+
+export type PutAuditRetentionResponses = {
+    /**
+     * Retention
+     */
+    200: Retention;
+};
+
+export type PutAuditRetentionResponse = PutAuditRetentionResponses[keyof PutAuditRetentionResponses];
+
+export type ListAuditSinksData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/ee/audit/sinks';
+};
+
+export type ListAuditSinksErrors = {
+    /**
+     * Error: `{code, message, request_id}`
+     */
+    default: ErrorBody;
+};
+
+export type ListAuditSinksError = ListAuditSinksErrors[keyof ListAuditSinksErrors];
+
+export type ListAuditSinksResponses = {
+    /**
+     * Sinks, by name
+     */
+    200: Array<SinkView>;
+};
+
+export type ListAuditSinksResponse = ListAuditSinksResponses[keyof ListAuditSinksResponses];
+
+export type CreateAuditSinkData = {
+    body: SinkBody;
+    path?: never;
+    query?: never;
+    url: '/api/v1/ee/audit/sinks';
+};
+
+export type CreateAuditSinkErrors = {
+    /**
+     * Error: `{code, message, request_id}`
+     */
+    default: ErrorBody;
+};
+
+export type CreateAuditSinkError = CreateAuditSinkErrors[keyof CreateAuditSinkErrors];
+
+export type CreateAuditSinkResponses = {
+    /**
+     * The sink
+     */
+    201: SinkView;
+};
+
+export type CreateAuditSinkResponse = CreateAuditSinkResponses[keyof CreateAuditSinkResponses];
+
+export type DeleteAuditSinkData = {
+    body?: never;
+    path: {
+        /**
+         * Sink id
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/api/v1/ee/audit/sinks/{id}';
+};
+
+export type DeleteAuditSinkErrors = {
+    /**
+     * Error: `{code, message, request_id}`
+     */
+    default: ErrorBody;
+};
+
+export type DeleteAuditSinkError = DeleteAuditSinkErrors[keyof DeleteAuditSinkErrors];
+
+export type DeleteAuditSinkResponses = {
+    /**
+     * Deleted
+     */
+    204: void;
+};
+
+export type DeleteAuditSinkResponse = DeleteAuditSinkResponses[keyof DeleteAuditSinkResponses];
+
+export type UpdateAuditSinkData = {
+    body: SinkBody;
+    path: {
+        /**
+         * Sink id
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/api/v1/ee/audit/sinks/{id}';
+};
+
+export type UpdateAuditSinkErrors = {
+    /**
+     * Error: `{code, message, request_id}`
+     */
+    default: ErrorBody;
+};
+
+export type UpdateAuditSinkError = UpdateAuditSinkErrors[keyof UpdateAuditSinkErrors];
+
+export type UpdateAuditSinkResponses = {
+    /**
+     * The sink
+     */
+    200: SinkView;
+};
+
+export type UpdateAuditSinkResponse = UpdateAuditSinkResponses[keyof UpdateAuditSinkResponses];
+
+export type SkipAuditSinkData = {
+    body?: never;
+    path: {
+        /**
+         * Sink id
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/api/v1/ee/audit/sinks/{id}/skip';
+};
+
+export type SkipAuditSinkErrors = {
+    /**
+     * Error: `{code, message, request_id}`
+     */
+    default: ErrorBody;
+};
+
+export type SkipAuditSinkError = SkipAuditSinkErrors[keyof SkipAuditSinkErrors];
+
+export type SkipAuditSinkResponses = {
+    /**
+     * The sink
+     */
+    200: SinkView;
+};
+
+export type SkipAuditSinkResponse = SkipAuditSinkResponses[keyof SkipAuditSinkResponses];
+
+export type TestAuditSinkData = {
+    body?: never;
+    path: {
+        /**
+         * Sink id
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/api/v1/ee/audit/sinks/{id}/test';
+};
+
+export type TestAuditSinkErrors = {
+    /**
+     * Error: `{code, message, request_id}`
+     */
+    default: ErrorBody;
+};
+
+export type TestAuditSinkError = TestAuditSinkErrors[keyof TestAuditSinkErrors];
+
+export type TestAuditSinkResponses = {
+    /**
+     * The receiver took it
+     */
+    204: void;
+};
+
+export type TestAuditSinkResponse = TestAuditSinkResponses[keyof TestAuditSinkResponses];
 
 export type ListRecentBackupsData = {
     body?: never;

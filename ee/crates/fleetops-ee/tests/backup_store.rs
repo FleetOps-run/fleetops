@@ -119,8 +119,24 @@ async fn hooks_list_every_sealed_ee_column() {
     )
     .await
     .unwrap();
+    fleetops_ee::siem::db::create(
+        &store,
+        "splunk",
+        fleetops_ee::siem::model::SinkKind::SplunkHec,
+        true,
+        &fleetops_ee::siem::model::SinkSettings::default(),
+        &fleetops_ee::siem::model::SinkSecrets {
+            url: Some("https://splunk.example/services/collector/event".into()),
+            token: Some("t".into()),
+            headers: vec![],
+        },
+        0,
+        0,
+    )
+    .await
+    .unwrap();
     let cols = hooks::sealed();
-    assert_eq!(cols.len(), 7);
+    assert_eq!(cols.len(), 8);
     let boxed: &SecretBox = store.secrets();
     for col in cols {
         let rows: Vec<(i64, String)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
