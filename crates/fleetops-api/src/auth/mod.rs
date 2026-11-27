@@ -1,3 +1,4 @@
+pub mod bearer;
 pub mod cookie;
 pub mod extract;
 pub mod limiter;

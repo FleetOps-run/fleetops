@@ -143,7 +143,11 @@ pub async fn update(
     if let Some(pw) = body.password {
         let hash = password::hash_password(pw).await?;
         s.store.set_password_hash(id, &hash, now).await?;
-        let keep = (id == admin.user.id).then_some(admin.session.id);
+        let keep = admin
+            .session
+            .as_ref()
+            .filter(|_| id == admin.user.id)
+            .map(|s| s.id);
         s.store.delete_user_sessions(id, keep).await?;
     }
     if edits {

@@ -33,6 +33,9 @@ pub enum Feature {
     /// Notifications to Slack, email and webhooks (`/ee/notifications`).
     /// Every active license has it.
     Notifications,
+    /// Personal API tokens (`/ee/tokens`) and `Authorization: Bearer`.
+    /// Every active license has it.
+    ApiTokens,
 }
 
 impl Feature {
@@ -44,6 +47,7 @@ impl Feature {
         Feature::Backup,
         Feature::VulnScan,
         Feature::Notifications,
+        Feature::ApiTokens,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -55,6 +59,7 @@ impl Feature {
             Feature::Backup => "backup",
             Feature::VulnScan => "vuln_scan",
             Feature::Notifications => "notifications",
+            Feature::ApiTokens => "api_tokens",
         }
     }
 

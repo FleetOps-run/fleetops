@@ -2,7 +2,28 @@ use crate::{db_err, Store};
 use fleetops_core::{Error, Result};
 use serde::Serialize;
 use serde_json::Value;
+use std::{future::Future, sync::OnceLock};
 use utoipa::ToSchema;
+
+tokio::task_local! {
+    /// The API token the request on this task authenticated with.
+    static CREDENTIAL: OnceLock<(i64, String)>;
+}
+
+/// Runs `f` with room to record the API token behind it (one request).
+pub async fn with_credential_scope<F: Future>(f: F) -> F::Output {
+    CREDENTIAL.scope(OnceLock::new(), f).await
+}
+
+/// Tags every audit row written later in this scope with the token; does
+/// nothing outside a scope.
+pub fn set_credential(id: i64, name: &str) {
+    let _ = CREDENTIAL.try_with(|c| c.set((id, name.to_string())));
+}
+
+fn credential() -> Option<(i64, String)> {
+    CREDENTIAL.try_with(|c| c.get().cloned()).ok().flatten()
+}
 
 pub struct NewAudit<'a> {
     pub ts: i64,
@@ -21,6 +42,8 @@ pub struct AuditEntry {
     pub ts: i64,
     pub user_id: Option<i64>,
     pub username: Option<String>,
+    /// The API token the action came through; `null` for a browser session.
+    pub token_name: Option<String>,
     pub environment_id: Option<i64>,
     pub action: String,
     pub target_type: Option<String>,
@@ -35,6 +58,7 @@ struct AuditRow {
     ts: i64,
     user_id: Option<i64>,
     username: Option<String>,
+    token_name: Option<String>,
     environment_id: Option<i64>,
     action: String,
     target_type: Option<String>,
@@ -57,6 +81,7 @@ impl TryFrom<AuditRow> for AuditEntry {
             ts: r.ts,
             user_id: r.user_id,
             username: r.username,
+            token_name: r.token_name,
             environment_id: r.environment_id,
             action: r.action,
             target_type: r.target_type,
@@ -94,9 +119,10 @@ impl Store {
     }
 
     async fn insert_audit_row(&self, a: &NewAudit<'_>) -> Result<i64> {
+        let token = credential();
         sqlx::query_scalar(
-            "INSERT INTO audit_log (ts, user_id, environment_id, action, target_type, target_id, result, detail)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+            "INSERT INTO audit_log (ts, user_id, environment_id, action, target_type, target_id, result, detail, token_id, token_name)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
         )
         .bind(a.ts)
         .bind(a.user_id)
@@ -106,6 +132,8 @@ impl Store {
         .bind(a.target_id)
         .bind(a.result)
         .bind(a.detail.as_ref().map(Value::to_string))
+        .bind(token.as_ref().map(|t| t.0))
+        .bind(token.map(|t| t.1))
         .fetch_one(&self.pool)
         .await
         .map_err(db_err)
@@ -130,7 +158,7 @@ impl Store {
             None => (None, None),
         };
         let rows: Vec<AuditRow> = sqlx::query_as(
-            "SELECT a.id, a.ts, a.user_id, u.username, a.environment_id, a.action,
+            "SELECT a.id, a.ts, a.user_id, u.username, a.token_name, a.environment_id, a.action,
                     a.target_type, a.target_id, a.result, a.detail
              FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
              WHERE (? IS NULL OR a.id < ?)
@@ -172,7 +200,7 @@ impl Store {
         limit: i64,
     ) -> Result<Vec<AuditEntry>> {
         let rows: Vec<AuditRow> = sqlx::query_as(
-            "SELECT a.id, a.ts, a.user_id, u.username, a.environment_id, a.action,
+            "SELECT a.id, a.ts, a.user_id, u.username, a.token_name, a.environment_id, a.action,
                     a.target_type, a.target_id, a.result, a.detail
              FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
              WHERE a.id > ? AND (? IS NULL OR a.ts >= ?) AND (? IS NULL OR a.ts < ?)
@@ -235,5 +263,42 @@ mod range_tests {
         let page = s.audit_range(None, None, all[1].id, 1).await.unwrap();
         assert_eq!(page.len(), 1);
         assert_eq!(page[0].ts, 30);
+    }
+}
+
+#[cfg(test)]
+mod credential_tests {
+    use super::{set_credential, with_credential_scope};
+    use crate::{NewAudit, Store};
+
+    async fn row(s: &Store) -> i64 {
+        s.insert_audit(&NewAudit {
+            ts: 1,
+            user_id: None,
+            environment_id: None,
+            action: "x",
+            target_type: None,
+            target_id: None,
+            result: "success",
+            detail: None,
+        })
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn credential_scope_tags_rows() {
+        let s = Store::in_memory().await.unwrap();
+        let tagged = with_credential_scope(async {
+            set_credential(7, "ci");
+            row(&s).await
+        })
+        .await;
+        set_credential(8, "outside"); // no scope: ignored
+        let plain = row(&s).await;
+        let rows = s.list_audit(10, None).await.unwrap();
+        let get = |id| rows.iter().find(|r| r.id == id).unwrap();
+        assert_eq!(get(tagged).token_name.as_deref(), Some("ci"));
+        assert_eq!(get(plain).token_name, None);
     }
 }

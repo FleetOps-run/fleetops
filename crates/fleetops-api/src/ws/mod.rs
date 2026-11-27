@@ -51,6 +51,10 @@ pub async fn handler(
     headers: HeaderMap,
     ws: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
 ) -> Response {
+    // The socket re-checks its session as it runs, and carries exec.
+    if let Err(e) = cu.require_session() {
+        return e.into_response();
+    }
     if !origin_allowed(&headers) {
         return ApiError(Error::Forbidden(
             "websocket Origin does not match this server".into(),

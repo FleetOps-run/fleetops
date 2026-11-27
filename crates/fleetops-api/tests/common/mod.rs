@@ -179,6 +179,26 @@ pub async fn app_with_external(x: Arc<dyn fleetops_api::external::ExternalAuth>)
     }
 }
 
+/// An app whose API-token hook is `t` instead of Community's.
+pub async fn app_with_tokens(t: Arc<dyn fleetops_api::auth::bearer::TokenAuth>) -> TestApp {
+    let store = Store::in_memory().await.unwrap();
+    let fake = FakeDocker::new();
+    let state = AppState::new(
+        store.clone(),
+        ApiConfig::default(),
+        Arc::new(FakeFactory(fake.clone())),
+    )
+    .with_agents(fake.agents.clone())
+    .with_token_auth(t);
+    let router = fleetops_api::app(state.clone(), Router::new());
+    TestApp {
+        router,
+        store,
+        state,
+        fake,
+    }
+}
+
 /// An app whose entitlements are `e` instead of Community.
 pub async fn app_entitled(e: Arc<dyn fleetops_core::edition::Entitlements>) -> TestApp {
     let store = Store::in_memory().await.unwrap();
@@ -230,6 +250,14 @@ pub fn req_from(
     let mut r = b.body(body).unwrap();
     r.extensions_mut()
         .insert(ConnectInfo(SocketAddr::from((ip, 40000))));
+    r
+}
+
+/// A request carrying `Authorization: Bearer <token>` and no cookie.
+pub fn req_bearer(method: &str, uri: &str, token: &str, body: Option<Value>) -> Request<Body> {
+    let mut r = req(method, uri, body, None);
+    r.headers_mut()
+        .insert("authorization", format!("Bearer {token}").parse().unwrap());
     r
 }
 

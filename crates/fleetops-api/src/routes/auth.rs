@@ -203,7 +203,7 @@ pub async fn logout(
     meta: ClientMeta,
     cu: CurrentUser,
 ) -> ApiResult<Response> {
-    s.store.delete_session(cu.session.id).await?;
+    s.store.delete_session(cu.require_session()?.id).await?;
     let mut res = StatusCode::NO_CONTENT.into_response();
     res.headers_mut().insert(SET_COOKIE, clear_cookie(meta.tls));
     Ok(res)
@@ -220,7 +220,8 @@ pub async fn logout(
 pub async fn me(cu: CurrentUser) -> Json<SessionInfo> {
     Json(SessionInfo {
         user: cu.user,
-        csrf_token: cu.session.csrf_token,
+        // API tokens need no CSRF token.
+        csrf_token: cu.session.map(|s| s.csrf_token).unwrap_or_default(),
     })
 }
 
@@ -290,7 +291,7 @@ pub async fn list_sessions(
         .into_iter()
         .filter(|r| r.is_active(now, SESSION_IDLE_SECS))
         .map(|r| SessionView {
-            current: r.id == cu.session.id,
+            current: cu.session.as_ref().is_some_and(|c| c.id == r.id),
             id: r.id,
             created_at: r.created_at,
             last_seen_at: r.last_seen_at,
@@ -351,6 +352,7 @@ pub async fn change_password(
     cu: CurrentUser,
     ApiJson(body): ApiJson<ChangePassword>,
 ) -> ApiResult<StatusCode> {
+    let keep = cu.require_session()?.id;
     let (_, hash) = s
         .store
         .find_credentials(&cu.user.username)
@@ -366,9 +368,7 @@ pub async fn change_password(
     s.store
         .set_password_hash(cu.user.id, &new_hash, now_unix())
         .await?;
-    s.store
-        .delete_user_sessions(cu.user.id, Some(cu.session.id))
-        .await?;
+    s.store.delete_user_sessions(cu.user.id, Some(keep)).await?;
     audit(
         &s,
         Some(cu.user.id),

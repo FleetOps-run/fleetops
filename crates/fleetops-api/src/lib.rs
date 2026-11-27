@@ -66,5 +66,8 @@ fn build(
         .layer(from_fn(move |req, next| {
             headers::security_headers(hsts, req, next)
         }))
+        .layer(from_fn(|req, next: axum::middleware::Next| {
+            fleetops_store::with_credential_scope(next.run(req))
+        }))
         .layer(from_fn(request_id::middleware))
 }
