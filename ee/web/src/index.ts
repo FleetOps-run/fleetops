@@ -1,7 +1,8 @@
 import { createRoute, lazyRouteComponent } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { BellRing, KeyRound, LogIn, ShieldAlert, ShieldCheck, UsersRound } from "lucide-react";
+import { BellRing, KeyRound, KeySquare, LogIn, ShieldAlert, ShieldCheck, UsersRound } from "lucide-react";
 import type { EeModule } from "@/ee-contract";
+import { ApiTokensSection } from "./ApiTokensSection";
 import { AuditExport } from "./AuditExport";
 import { BackupSchedule } from "./BackupSchedule";
 import { EeBanners } from "./BackupBanner";
@@ -46,6 +47,11 @@ export const ee: EeModule = {
     }),
     createRoute({
       getParentRoute: () => admin,
+      path: "tokens",
+      component: lazyRouteComponent(() => import("./ApiTokensPage"), "ApiTokensPage"),
+    }),
+    createRoute({
+      getParentRoute: () => admin,
       path: "security",
       component: lazyRouteComponent(() => import("./SecuritySettingsPage"), "SecuritySettingsPage"),
     }),
@@ -70,6 +76,7 @@ export const ee: EeModule = {
     { to: "/admin/teams", label: "Teams", icon: UsersRound, group: "people", feature: "teams" },
     { to: "/admin/roles", label: "Roles", icon: ShieldCheck, group: "people", feature: "rbac" },
     { to: "/admin/sso", label: "Single sign-on", icon: LogIn, group: "people", feature: "sso" },
+    { to: "/admin/tokens", label: "API tokens", icon: KeySquare, group: "people", feature: "api_tokens" },
     { to: "/admin/security", label: "Security scanning", icon: ShieldAlert, group: "infra", feature: "vuln_scan" },
     { to: "/admin/notifications", label: "Notifications", icon: BellRing, group: "infra", feature: "notifications" },
     { to: "/admin/license", label: "License", icon: KeyRound, group: "license" },
@@ -78,6 +85,7 @@ export const ee: EeModule = {
     "shell.banner": { component: EeBanners },
     "shell.upgrade": { component: UpgradeCard },
     "audit.toolbar": { component: AuditExport, feature: "audit_export" },
+    "account.section": { component: ApiTokensSection, feature: "api_tokens" },
     "user.access": { component: UserTeamAccess },
     "env.access": { component: EnvTeamAccess },
     "admin.backup": { component: BackupSchedule, feature: "backup" },
