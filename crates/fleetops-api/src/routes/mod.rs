@@ -230,7 +230,7 @@ pub(crate) async fn detached<T: Send + 'static>(
     what: &str,
     f: impl std::future::Future<Output = fleetops_core::Result<T>> + Send + 'static,
 ) -> fleetops_core::Result<T> {
-    tokio::spawn(f)
+    tokio::spawn(fleetops_store::carry_credential(f))
         .await
         .map_err(|e| Error::Internal(format!("{what}: {e}")))?
 }

@@ -36,6 +36,9 @@ pub enum Feature {
     /// Audit forwarding to a SIEM and longer audit retention
     /// (`/ee/audit/sinks`, `/ee/audit/retention`). Every active license has it.
     AuditSinks,
+    /// Personal API tokens (`/ee/tokens`) and `Authorization: Bearer`.
+    /// Every active license has it.
+    ApiTokens,
 }
 
 impl Feature {
@@ -48,6 +51,7 @@ impl Feature {
         Feature::VulnScan,
         Feature::Notifications,
         Feature::AuditSinks,
+        Feature::ApiTokens,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -60,6 +64,7 @@ impl Feature {
             Feature::VulnScan => "vuln_scan",
             Feature::Notifications => "notifications",
             Feature::AuditSinks => "audit_sinks",
+            Feature::ApiTokens => "api_tokens",
         }
     }
 

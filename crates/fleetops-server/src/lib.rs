@@ -79,6 +79,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
             .with_extra_grants(ee.grants)
             .with_custom_roles(ee.roles)
             .with_external_auth(ee.external_auth)
+            .with_token_auth(ee.token_auth)
             .with_backup_hooks(ee.backup_hooks);
         tokio::spawn(fleetops_ee::backup::schedule::run(
             state.clone(),

@@ -13,6 +13,7 @@ import { errorMessage } from "@/lib/errors";
 import { formatTime } from "@/lib/format";
 import { FormError } from "./AuthLayout";
 import { UserAvatar } from "@/components/UserAvatar";
+import { Slot } from "@/ee-slots";
 
 export function AccountPage() {
   const { user } = useSession();
@@ -29,6 +30,7 @@ export function AccountPage() {
       </p>
       <PasswordCard />
       <SessionsCard />
+      <Slot name="account.section" />
     </div>
   );
 }

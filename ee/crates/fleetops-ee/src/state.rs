@@ -154,6 +154,7 @@ impl LicenseState {
                         Feature::VulnScan,
                         Feature::Notifications,
                         Feature::AuditSinks,
+                        Feature::ApiTokens,
                     ] {
                         if !f.contains(&always) {
                             f.push(always);
@@ -197,6 +198,7 @@ impl Entitlements for LicenseState {
                     | Feature::VulnScan
                     | Feature::Notifications
                     | Feature::AuditSinks
+                    | Feature::ApiTokens
             ) || l.features.contains(&feature)
         })
         .unwrap_or(false)

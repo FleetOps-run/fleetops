@@ -44,6 +44,18 @@ describe("audit log", () => {
     expect(screen.queryByRole("button", { name: "Load older entries" })).not.toBeInTheDocument();
   });
 
+  it("shows the API token a row came through", async () => {
+    mockFetch({
+      ...loggedIn,
+      "GET /api/v1/audit": { json: [entry(2, { token_name: "ci" }), entry(1)] },
+    });
+    const { screen } = renderApp("/admin/audit");
+    await waitFor(() => expect(rows(screen)).toHaveLength(2));
+    const [byToken, bySession] = rows(screen);
+    expect(byToken).toHaveTextContent("via token ci");
+    expect(bySession).not.toHaveTextContent("via token");
+  });
+
   it("asks the server for the filtered entries", async () => {
     const calls = mockFetch({ ...loggedIn, "GET /api/v1/audit": { json: [entry(1)] } });
     const { screen } = renderApp("/admin/audit");

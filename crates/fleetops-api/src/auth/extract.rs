@@ -1,4 +1,5 @@
 use super::{
+    bearer::TokenRef,
     cookie::{read_cookie, SESSION_COOKIE},
     token::{constant_time_eq, hash_token},
     CSRF_HEADER, SESSION_IDLE_SECS, SESSION_TOUCH_SECS,
@@ -6,7 +7,11 @@ use super::{
 use crate::{ApiError, AppState, IsTls};
 use axum::{
     extract::{ConnectInfo, FromRequestParts},
-    http::{header::USER_AGENT, request::Parts, Method},
+    http::{
+        header::{AUTHORIZATION, USER_AGENT},
+        request::Parts,
+        Method,
+    },
 };
 use fleetops_core::{now_unix, Error, Role, User};
 use fleetops_store::SessionRecord;
@@ -42,11 +47,63 @@ impl<S: Send + Sync> FromRequestParts<S> for ClientMeta {
     }
 }
 
-/// An authenticated user. Extracting this enforces CSRF on every method
-/// other than GET/HEAD/OPTIONS, so handlers cannot forget it.
+/// An authenticated user, by browser session or by API token (exactly one
+/// of `session` and `token` is set). Extracting this enforces CSRF on every
+/// session request other than GET/HEAD/OPTIONS, so handlers cannot forget
+/// it; bearer requests need none, since browsers never send the header.
 pub struct CurrentUser {
     pub user: User,
-    pub session: SessionRecord,
+    pub session: Option<SessionRecord>,
+    pub token: Option<TokenRef>,
+}
+
+impl CurrentUser {
+    /// The browser session, for what an API token may not do (sign out,
+    /// change a password, open the websocket, manage tokens).
+    pub fn require_session(&self) -> Result<&SessionRecord, ApiError> {
+        self.session
+            .as_ref()
+            .ok_or_else(|| Error::Forbidden("this needs a signed-in browser session".into()).into())
+    }
+}
+
+fn bearer(parts: &Parts) -> Option<&str> {
+    parts
+        .headers
+        .get(AUTHORIZATION)?
+        .to_str()
+        .ok()?
+        .strip_prefix("Bearer ")
+        .map(str::trim)
+}
+
+/// The token path: no cookie fallback, so a bad token never falls through
+/// to a session the same client also holds.
+async fn from_token(parts: &Parts, state: &AppState, raw: &str) -> Result<CurrentUser, ApiError> {
+    let ip = parts
+        .extensions
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|c| c.0.ip().to_string())
+        .unwrap_or_else(|| "unknown".into());
+    let (user, token) = state
+        .token_auth
+        .authenticate(state, raw, &ip)
+        .await?
+        .ok_or_else(|| {
+            ApiError::from(Error::Unauthorized("invalid or expired API token".into()))
+        })?;
+    if user.disabled_at.is_some() {
+        return Err(Error::Unauthorized("invalid or expired API token".into()).into());
+    }
+    if token.read_only && !is_safe_method(&parts.method) {
+        return Err(Error::Forbidden("this token is read-only".into()).into());
+    }
+    fleetops_store::set_credential(token.id, &token.name);
+    Ok(CurrentUser {
+        user,
+        session: None,
+        token: Some(token),
+    })
 }
 
 fn is_safe_method(m: &Method) -> bool {
@@ -61,6 +118,9 @@ impl FromRequestParts<AppState> for CurrentUser {
     type Rejection = ApiError;
 
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, ApiError> {
+        if let Some(raw) = bearer(parts) {
+            return from_token(parts, state, raw).await;
+        }
         let token = read_cookie(&parts.headers, SESSION_COOKIE).ok_or_else(unauthorized)?;
         let session = state
             .store
@@ -92,7 +152,11 @@ impl FromRequestParts<AppState> for CurrentUser {
             Err(Error::NotFound(_)) => return Err(unauthorized()),
             Err(e) => return Err(e.into()),
         };
-        Ok(CurrentUser { user, session })
+        Ok(CurrentUser {
+            user,
+            session: Some(session),
+            token: None,
+        })
     }
 }
 

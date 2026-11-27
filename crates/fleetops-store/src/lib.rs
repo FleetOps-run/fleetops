@@ -18,7 +18,9 @@ mod users;
 
 pub use access::BindingRecord;
 pub use agents::AgentRecord;
-pub use audit::{AuditEntry, AuditFilter, NewAudit};
+pub use audit::{
+    carry_credential, set_credential, with_credential_scope, AuditEntry, AuditFilter, NewAudit,
+};
 pub use environments::EnvironmentRecord;
 pub use sessions::{NewSession, SessionRecord};
 pub use settings::AUDIT_RETENTION_KEY;

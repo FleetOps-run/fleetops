@@ -14,6 +14,7 @@ fn row(id: i64, detail: serde_json::Value) -> AuditEntry {
         ts: 1_790_000_000 + id,
         user_id: Some(1),
         username: Some("admin".into()),
+        token_name: None,
         environment_id: None,
         action: "container.stop".into(),
         target_type: Some("container".into()),

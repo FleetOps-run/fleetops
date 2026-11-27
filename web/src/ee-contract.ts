@@ -25,6 +25,8 @@ export interface SlotProps {
   "image.badge": { env: string; imageId: string };
   /** In an environment's panel on the Environments admin page. */
   "env.settings": { env: string; kind: string };
+  /** On the Account page, after the sessions. */
+  "account.section": object;
 }
 
 export type SlotName = keyof SlotProps;

@@ -172,7 +172,7 @@ impl TaskManager {
         });
         tasks.insert(id, task.clone());
         let t = task.clone();
-        tokio::spawn(async move {
+        tokio::spawn(fleetops_store::carry_credential(async move {
             let mut outcome = Ok(());
             while let Some(item) = stream.next().await {
                 match item {
@@ -197,7 +197,7 @@ impl TaskManager {
             }
             let info = t.finish(&outcome);
             on_done(info).await;
-        });
+        }));
         Ok(task)
     }
 

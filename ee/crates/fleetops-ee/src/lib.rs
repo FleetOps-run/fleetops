@@ -15,6 +15,7 @@ pub mod siem;
 pub mod sso;
 pub mod state;
 pub mod teams;
+pub mod tokens;
 
 use axum::Extension;
 use ed25519_dalek::VerifyingKey;
@@ -58,6 +59,8 @@ pub struct EeParts {
     pub grants: Arc<dyn ExtraGrants>,
     /// Custom roles granted straight to users, through the core access routes.
     pub roles: Arc<dyn CustomRoles>,
+    /// API tokens: who `Authorization: Bearer` belongs to.
+    pub token_auth: Arc<dyn fleetops_api::auth::bearer::TokenAuth>,
     /// Single sign-on: login-page providers and the password-login gate.
     pub external_auth: Arc<dyn ExternalAuth>,
     /// Enterprise sealed columns and migrations, for backups.
@@ -182,6 +185,9 @@ pub fn api_routes() -> OpenApiRouter<AppState> {
             siem::routes::get_retention,
             siem::routes::put_retention
         ))
+        .routes(routes!(tokens::routes::list, tokens::routes::create))
+        .routes(routes!(tokens::routes::list_all))
+        .routes(routes!(tokens::routes::delete))
 }
 
 pub async fn init(store: &Store, config: EeConfig) -> Result<EeParts> {
@@ -219,6 +225,7 @@ pub async fn init_with_keys(
             state.clone(),
         )),
         external_auth: Arc::new(sso::hook::EeSso::new(store.clone())),
+        token_auth: Arc::new(tokens::auth::EeTokens),
         backup_hooks: Arc::new(backup::hooks::EeBackupHooks),
         backup_runner: runner,
         background: Box::pin(watch(state)),

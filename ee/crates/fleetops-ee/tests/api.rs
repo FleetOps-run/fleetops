@@ -57,7 +57,7 @@ async fn admin_installs_a_license_and_features_turn_on() {
     assert_eq!(info["customer"], "Acme");
     assert_eq!(info["max_users"], 5);
     assert_eq!(info["users_in_use"], 1);
-    // Teams, custom roles, SSO, scheduled backups and scanning come with every license, listed or not.
+    // Teams, custom roles, SSO, scheduled backups, scanning, notifications and API tokens come with every license, listed or not.
     assert_eq!(
         info["features"],
         json!([
@@ -68,7 +68,8 @@ async fn admin_installs_a_license_and_features_turn_on() {
             "backup",
             "vuln_scan",
             "notifications",
-            "audit_sinks"
+            "audit_sinks",
+            "api_tokens"
         ])
     );
     let r = ee.send("GET", "/api/v1/edition", None, Some(&admin)).await;
@@ -82,7 +83,8 @@ async fn admin_installs_a_license_and_features_turn_on() {
             "backup",
             "vuln_scan",
             "notifications",
-            "audit_sinks"
+            "audit_sinks",
+            "api_tokens"
         ])
     );
     assert!(ee.actions().await.contains(&"license.update".to_string()));
@@ -196,7 +198,8 @@ async fn delete_falls_back_to_file_then_none() {
             "backup",
             "vuln_scan",
             "notifications",
-            "audit_sinks"
+            "audit_sinks",
+            "api_tokens"
         ]),
         "back on the file's license, which names no features"
     );
@@ -345,10 +348,10 @@ async fn export_csv_and_ndjson_with_range() {
     let lines: Vec<&str> = r.text.lines().collect();
     assert_eq!(
         lines[0],
-        "id,ts,user_id,username,environment_id,action,target_type,target_id,result,detail"
+        "id,ts,user_id,username,token_name,environment_id,action,target_type,target_id,result,detail"
     );
     assert_eq!(lines.len(), 2, "{}", r.text);
-    assert!(lines[1].contains(",200,,,,container.stop,container,web,success,"));
+    assert!(lines[1].contains(",200,,,,,container.stop,container,web,success,"));
     let r = ee
         .send(
             "GET",

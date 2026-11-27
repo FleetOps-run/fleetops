@@ -524,7 +524,7 @@ pub fn deploy_stream(
         state.stack_locks.lock().unwrap().remove(&stack.id);
     };
     let started = futures_util::stream::once(async move {
-        tokio::spawn(job);
+        tokio::spawn(fleetops_store::carry_credential(job));
         rx
     });
     Box::pin(started.flat_map(|rx| {

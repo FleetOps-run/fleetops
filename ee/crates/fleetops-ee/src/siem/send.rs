@@ -319,6 +319,7 @@ mod tests {
             ts: 1_790_000_000,
             user_id: None,
             username: None,
+            token_name: None,
             environment_id: None,
             action: action.into(),
             target_type: None,

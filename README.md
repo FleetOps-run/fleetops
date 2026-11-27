@@ -188,7 +188,7 @@ There is one image, `fleets/fleetops`. Every install starts on Community. Buy a 
 | Image vulnerability scanning (Trivy) with a fleet-wide patch queue | | ✓ |
 | Notifications: Slack, email, Microsoft Teams, Discord, PagerDuty, webhooks | | ✓ |
 | Audit forwarding to your SIEM (syslog, Splunk, HTTPS) and retention up to 10 years | | ✓ |
-| API tokens | | planned |
+| API tokens for CI and scripts, audited by name | | ✓ |
 
 Enterprise is for paying customers only: there is no free tier or trial license, since Community is already free on any number of nodes. FleetOps runs as Community until a license is installed: upload it in **Admin → License**, or start the server with `--license-file` / `FLEETOPS_LICENSE_FILE`. Licenses are checked offline. After expiry, Enterprise features keep working for 14 days, then turn off; Community features and data are never affected. A license covers a number of nodes: each Docker or Podman host is one, and a Kubernetes cluster counts its nodes. At the limit, new environments are refused; a cluster that grows past it only warns admins. Users are never limited.
 
@@ -209,6 +209,8 @@ Image vulnerability scanning comes with any Enterprise license. It is off until 
 Notifications come with any Enterprise license too: in **Admin → Notifications**, rules send new CVEs on the images you run to Slack, email (SMTP, including Amazon SES), Microsoft Teams, Discord, PagerDuty or a webhook. One message per CVE, listing every affected image; rebuilds that still carry a known CVE stay quiet. See [docs/notifications.md](docs/notifications.md).
 
 Audit forwarding comes with any Enterprise license as well. In **Admin → Audit forwarding**, every audit entry goes as it happens to syslog (UDP, TCP or TLS: rsyslog, syslog-ng, Microsoft Sentinel), Splunk's HTTP Event Collector, or any HTTPS endpoint (Datadog, Elastic, Logstash, Vector), in order and at least once; a receiver that is down gets everything it missed when it comes back. The same page keeps the audit log longer than Community's 90 days, up to 10 years. See [docs/audit-forwarding.md](docs/audit-forwarding.md).
+
+API tokens come with any Enterprise license as well. Each user creates their own on the **Account** page; a token acts as its owner over `Authorization: Bearer fo_…`, can be read-only and can expire, and every action it takes is in the audit log under its name. Admins see and revoke every token in **Admin → API tokens**. See [docs/api-tokens.md](docs/api-tokens.md).
 
 Everything outside `ee/` is Apache-2.0. The `ee/` directory is source-available: you may read, modify and test it, and run official builds for free on the Community plan, production included; using the Enterprise features in production needs a subscription. `make build` builds the one server, Enterprise code included; it runs as Community until a license is installed.
 
@@ -265,11 +267,10 @@ To report a vulnerability, see [SECURITY.md](SECURITY.md). Please don't open a p
 
 ## Roadmap
 
-**Done:** core and local Docker · remote hosts through agents · Kubernetes (live lists, YAML editing, custom resources, events and metrics, suspend and resume, workload logs and exec, EKS/GKE/AKS kubeconfigs) · per-environment roles with namespace scoping · Helm releases, install and upgrade · backup and restore · Compose stacks with plan, deploy and rollback, from the browser or a git repository · Enterprise audit export, teams, custom roles, single sign-on (OIDC, LDAP), scheduled backups, image vulnerability scanning and notifications.
+**Done:** core and local Docker · remote hosts through agents · Kubernetes (live lists, YAML editing, custom resources, events and metrics, suspend and resume, workload logs and exec, EKS/GKE/AKS kubeconfigs) · per-environment roles with namespace scoping · Helm releases, install and upgrade · backup and restore · Compose stacks with plan, deploy and rollback, from the browser or a git repository · Enterprise audit export, teams, custom roles, single sign-on (OIDC, LDAP), scheduled backups, image vulnerability scanning, notifications, SIEM forwarding with long audit retention, and API tokens.
 
 **Next:**
 - **Port-forward:** reach a pod's port through FleetOps.
-- **Enterprise:** API tokens, SIEM forwarding and long audit retention.
 
 ## Documentation
 

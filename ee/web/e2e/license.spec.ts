@@ -33,7 +33,7 @@ test("an admin installs a license, exports the audit log and meets the seat limi
     const download = page.waitForEvent("download");
     await page.getByRole("menuitem", { name: "CSV" }).click();
     const csv = fs.readFileSync(await (await download).path(), "utf8");
-    expect(csv.startsWith("id,ts,user_id,username,environment_id,action")).toBe(true);
+    expect(csv.startsWith("id,ts,user_id,username,token_name,environment_id,action")).toBe(true);
     expect(csv).toContain("license.update");
   });
 

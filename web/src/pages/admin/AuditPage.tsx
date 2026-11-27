@@ -58,6 +58,9 @@ const COLUMNS: Column<Row>[] = [
       <span className="flex items-center gap-2">
         {c.row.original.user_id == null ? <SystemAvatar /> : <UserAvatar name={c.getValue()} size="sm" />}
         {c.getValue()}
+        {c.row.original.token_name && (
+          <span className="text-xs text-muted-foreground">via token {c.row.original.token_name}</span>
+        )}
       </span>
     ),
   }),

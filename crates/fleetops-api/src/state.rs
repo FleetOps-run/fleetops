@@ -131,6 +131,8 @@ pub struct AppState {
     pub custom_roles: Arc<dyn fleetops_core::access::CustomRoles>,
     /// Single sign-on; local passwords only in Community.
     pub external_auth: Arc<dyn crate::external::ExternalAuth>,
+    /// API tokens; refused in Community.
+    pub token_auth: Arc<dyn crate::auth::bearer::TokenAuth>,
     /// Enterprise sealed columns and migrations for backups; none in Community.
     pub backup_hooks: Arc<dyn crate::backup::BackupHooks>,
     /// Starts the server again after a restore is left pending.
@@ -169,6 +171,7 @@ impl AppState {
             extra_grants: Arc::new(fleetops_core::access::NoExtraGrants),
             custom_roles: Arc::new(fleetops_core::access::NoCustomRoles),
             external_auth: Arc::new(crate::external::NoExternalAuth),
+            token_auth: Arc::new(crate::auth::bearer::NoTokenAuth),
             backup_hooks: Arc::new(crate::backup::NoBackupHooks),
             restart: Arc::new(crate::backup::NoRestart),
             staged: Arc::default(),
@@ -204,6 +207,11 @@ impl AppState {
 
     pub fn with_external_auth(mut self, a: Arc<dyn crate::external::ExternalAuth>) -> Self {
         self.external_auth = a;
+        self
+    }
+
+    pub fn with_token_auth(mut self, t: Arc<dyn crate::auth::bearer::TokenAuth>) -> Self {
+        self.token_auth = t;
         self
     }
 

@@ -147,6 +147,7 @@ async fn ee_app_inner(
         .with_extra_grants(parts.grants)
         .with_custom_roles(parts.roles)
         .with_external_auth(parts.external_auth)
+        .with_token_auth(parts.token_auth)
         .with_backup_hooks(parts.backup_hooks);
     Ee {
         router: fleetops_api::app_with(state.clone(), Router::new(), parts.routes),
@@ -277,6 +278,7 @@ async fn ee_app_all(
         .with_extra_grants(parts.grants)
         .with_custom_roles(parts.roles)
         .with_external_auth(parts.external_auth)
+        .with_token_auth(parts.token_auth)
         .with_backup_hooks(parts.backup_hooks);
     Ee {
         router: fleetops_api::app_with(state.clone(), Router::new(), parts.routes),
@@ -314,6 +316,39 @@ impl Ee {
                 .header("cookie", &s.cookie)
                 .header("x-csrf-token", &s.csrf);
         }
+        let body = match body {
+            Some((ct, text)) => {
+                b = b.header("content-type", ct);
+                Body::from(text)
+            }
+            None => Body::empty(),
+        };
+        let mut r = b.body(body).unwrap();
+        r.extensions_mut()
+            .insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 40000))));
+        let res = self.router.clone().oneshot(r).await.unwrap();
+        let status = res.status();
+        let headers = res.headers().clone();
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        Resp {
+            status,
+            headers,
+            text: String::from_utf8_lossy(&bytes).into_owned(),
+        }
+    }
+
+    /// A request with `Authorization: Bearer <token>` and no cookie.
+    pub async fn send_bearer(
+        &self,
+        method: &str,
+        uri: &str,
+        body: Option<(&str, String)>,
+        token: &str,
+    ) -> Resp {
+        let mut b = Request::builder()
+            .method(method)
+            .uri(uri)
+            .header("authorization", format!("Bearer {token}"));
         let body = match body {
             Some((ct, text)) => {
                 b = b.header("content-type", ct);

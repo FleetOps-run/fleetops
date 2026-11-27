@@ -357,6 +357,7 @@ pub async fn test(
         ts: now_unix(),
         user_id: Some(admin.user.id),
         username: Some(admin.user.username.clone()),
+        token_name: None,
         environment_id: None,
         action: "audit.sink.test".into(),
         target_type: Some("audit_sink".into()),

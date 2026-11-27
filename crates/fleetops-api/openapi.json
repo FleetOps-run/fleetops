@@ -4266,6 +4266,171 @@
         ]
       }
     },
+    "/api/v1/ee/tokens": {
+      "get": {
+        "tags": [
+          "enterprise"
+        ],
+        "summary": "Your API tokens",
+        "operationId": "listApiTokens",
+        "responses": {
+          "200": {
+            "description": "Tokens, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TokenInfo"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error: `{code, message, request_id}`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "enterprise"
+        ],
+        "summary": "Create an API token for yourself (needs the api_tokens feature)",
+        "operationId": "createApiToken",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewToken"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "The token and, once only, its secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedToken"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error: `{code, message, request_id}`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrf": [],
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ee/tokens/all": {
+      "get": {
+        "tags": [
+          "enterprise"
+        ],
+        "summary": "Every user's API tokens (admins)",
+        "operationId": "listAllApiTokens",
+        "responses": {
+          "200": {
+            "description": "Tokens, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TokenInfo"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error: `{code, message, request_id}`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ee/tokens/{id}": {
+      "delete": {
+        "tags": [
+          "enterprise"
+        ],
+        "summary": "Revoke an API token (yours, or anyone's for admins)",
+        "operationId": "deleteApiToken",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Token id",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "default": {
+            "description": "Error: `{code, message, request_id}`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrf": [],
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/v1/ee/users/{id}/access": {
       "get": {
         "tags": [
@@ -13331,6 +13496,13 @@
               "null"
             ]
           },
+          "token_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The API token the action came through; `null` for a browser session."
+          },
           "ts": {
             "type": "integer",
             "format": "int64"
@@ -14686,6 +14858,22 @@
           }
         }
       },
+      "CreatedToken": {
+        "type": "object",
+        "required": [
+          "token",
+          "secret"
+        ],
+        "properties": {
+          "secret": {
+            "type": "string",
+            "description": "The token itself. Shown only now; FleetOps keeps only its hash."
+          },
+          "token": {
+            "$ref": "#/components/schemas/TokenInfo"
+          }
+        }
+      },
       "Credentials": {
         "type": "object",
         "required": [
@@ -15799,7 +15987,8 @@
           "backup",
           "vuln_scan",
           "notifications",
-          "audit_sinks"
+          "audit_sinks",
+          "api_tokens"
         ]
       },
       "FileKind": {
@@ -17780,6 +17969,29 @@
           },
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "NewToken": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "expires_in_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "1-365; left out, the token never expires.",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "read_only": {
+            "type": "boolean"
           }
         }
       },
@@ -21167,6 +21379,68 @@
           },
           "ok": {
             "type": "boolean"
+          }
+        }
+      },
+      "TokenInfo": {
+        "type": "object",
+        "description": "A token as pages show it; never the secret or its hash.",
+        "required": [
+          "id",
+          "user_id",
+          "username",
+          "name",
+          "prefix",
+          "read_only",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "expires_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "`null`: never expires."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "last_used_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "last_used_ip": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string",
+            "description": "The token's first characters (`fo_` and 6 hex), to tell it apart."
+          },
+          "read_only": {
+            "type": "boolean",
+            "description": "Only GET, HEAD and OPTIONS."
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "username": {
+            "type": "string"
           }
         }
       },
