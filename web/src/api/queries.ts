@@ -5,6 +5,7 @@ import type { ContainerInspect, ImageInspect, ImageLayer, NetworkInspect, Volume
 import {
   getAuthStatus,
   getEdition,
+  getVersion,
   helmCapabilities,
   workloadPods,
   getDiskUsage,
@@ -67,6 +68,7 @@ import { mergeEvents } from "@/live/noise";
 export const keys = {
   authStatus: ["auth", "status"] as const,
   edition: ["edition"] as const,
+  version: ["system", "version"] as const,
   me: ["auth", "me"] as const,
   sessions: ["auth", "sessions"] as const,
   envs: ["envs"] as const,
@@ -121,6 +123,16 @@ export const editionQuery = queryOptions({
   queryKey: keys.edition,
   queryFn: async () => (await getEdition()).data,
   staleTime: 60_000,
+});
+
+const HOUR = 3_600_000;
+
+/** The server's version and the newest release it has seen (admins only). */
+export const versionQuery = queryOptions({
+  queryKey: keys.version,
+  queryFn: async () => (await getVersion()).data,
+  staleTime: HOUR,
+  refetchInterval: HOUR,
 });
 
 export const meQuery = queryOptions({
