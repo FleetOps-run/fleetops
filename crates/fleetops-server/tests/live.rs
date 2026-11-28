@@ -654,8 +654,14 @@ async fn container_image(live: &Live, env: &str, container: &str) -> String {
         .to_string()
 }
 
+/// Held by every test that builds or removes images. With the classic
+/// builder, removing an image while another build runs can fail that build
+/// with `unable to find image "sha256:…"`, so those tests take turns.
+static IMAGES: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 #[tokio::test]
 async fn stack_builds_against_docker() {
+    let _images = IMAGES.lock().await;
     use fleetops_git::testing::{GitServer, ServerOpts, TestRepo};
     let data = tempfile::tempdir().unwrap();
     let (live, _) = start_with(ApiConfig {
@@ -719,6 +725,7 @@ async fn stack_builds_against_docker() {
 
 #[tokio::test]
 async fn inline_dockerfile_builds_through_an_agent() {
+    let _images = IMAGES.lock().await;
     let (live, addr) = start().await;
     let session = connect_agent(&live, addr).await;
     let stack = format!("fleetops-it-inline-build-{}", std::process::id());

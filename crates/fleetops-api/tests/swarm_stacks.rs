@@ -470,9 +470,15 @@ async fn old_rejected_tasks_do_not_fail_a_deploy() {
             "Status": {"State": "rejected", "Message": "preparing", "Err": "an old failure"}
         }));
     // The update takes a while, so the feed has shown the old task by then.
+    // The clock starts at the update itself: completing it any earlier
+    // would be overwritten by the update's own "updating".
     *sw.daemon.update_outcome.lock().unwrap() = Some(("updating".into(), String::new()));
     let daemon = sw.daemon.clone();
+    let update = format!("/services/{id}/update");
     tokio::spawn(async move {
+        while !daemon.write_paths().iter().any(|p| p.contains(&update)) {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
         tokio::time::sleep(Duration::from_millis(400)).await;
         daemon.set_update_state("shop_web", "completed");
     });
