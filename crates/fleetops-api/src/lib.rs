@@ -18,6 +18,7 @@ mod routes;
 pub mod stacks;
 pub mod state;
 pub mod tasks;
+pub mod update_check;
 pub mod ws;
 
 use axum::{middleware::from_fn, Router};
