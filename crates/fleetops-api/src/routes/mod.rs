@@ -14,6 +14,7 @@ pub mod swarm;
 pub mod swarm_agents;
 pub mod swarm_protect;
 pub mod swarm_write;
+pub mod version;
 pub mod tasks;
 pub mod users;
 
@@ -32,6 +33,7 @@ pub fn api() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(health))
         .routes(routes!(edition::get))
+        .routes(routes!(version::get))
         .routes(routes!(crate::openapi::serve))
         .routes(routes!(auth::status))
         .routes(routes!(auth::setup))

@@ -3,7 +3,10 @@
 //! request carries nothing about this install. `--update-check false`
 //! turns it off.
 
-use std::sync::RwLock;
+use std::{
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 
 /// Parses `vX.Y.Z` or `X.Y.Z`; anything else (prereleases included) is `None`.
 pub fn parse_version(s: &str) -> Option<(u64, u64, u64)> {
@@ -53,6 +56,28 @@ impl UpdateStatus {
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone()
+    }
+}
+
+/// One lookup: a success replaces the recorded release, a failure keeps it.
+pub async fn check_once(status: &UpdateStatus, source: &dyn ReleaseSource) {
+    match source.latest().await {
+        Ok(r) => status.record(r),
+        Err(e) => tracing::debug!(error = %e, "update check failed"),
+    }
+}
+
+/// Checks after `first`, then every `every`, for as long as the server runs.
+pub async fn run(
+    status: Arc<UpdateStatus>,
+    source: Arc<dyn ReleaseSource>,
+    first: Duration,
+    every: Duration,
+) {
+    tokio::time::sleep(first).await;
+    loop {
+        check_once(&status, source.as_ref()).await;
+        tokio::time::sleep(every).await;
     }
 }
 
