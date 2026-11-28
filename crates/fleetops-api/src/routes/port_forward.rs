@@ -74,6 +74,8 @@ pub struct Redeemed {
     pub pod: String,
     pub port: u16,
     pub expires_at: i64,
+    /// This server's version, e.g. `1.6.0`; fleetops-cli notes when it is older.
+    pub server_version: String,
 }
 
 #[utoipa::path(post, path = "/envs/{env}/k8s/pods/{ns}/{name}/port-forward", operation_id = "createPortForward",
@@ -163,6 +165,7 @@ pub async fn redeem(
         pod: t.pod,
         port: t.port,
         expires_at,
+        server_version: env!("CARGO_PKG_VERSION").into(),
     }))
 }
 

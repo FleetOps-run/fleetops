@@ -18527,7 +18527,8 @@
           "namespace",
           "pod",
           "port",
-          "expires_at"
+          "expires_at",
+          "server_version"
         ],
         "properties": {
           "credential": {
@@ -18556,6 +18557,10 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          },
+          "server_version": {
+            "type": "string",
+            "description": "This server's version, e.g. `1.6.0`; fleetops-cli notes when it is older."
           }
         }
       },
