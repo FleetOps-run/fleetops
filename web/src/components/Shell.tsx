@@ -20,6 +20,7 @@ import { navParams } from "./shell/EnvPages";
 import { NowHost, SHEET_QUERY, useNowFrame } from "./shell/now";
 import { useMedia } from "./useMedia";
 import { Tape } from "./shell/Tape";
+import { UpdateBanner } from "./UpdateBanner";
 
 export { EnvTile } from "./shell/Library";
 
@@ -89,6 +90,7 @@ function Frame() {
       <main className="relative min-w-0 bg-card md:min-h-0 md:overflow-y-auto md:rounded-[10px]">
         <TopBar env={env} family={family} onMenu={() => setDrawer(true)} slotRef={setSlot} />
         <ConnectionBanner />
+        <UpdateBanner />
         <Slot name="shell.banner" />
         {env && (family === "docker" || family === "node") && <EnvLive env={env} />}
         <TopBarSlot.Provider value={slot}>

@@ -1,5 +1,6 @@
 pub mod config;
 pub mod factory;
+pub mod github;
 pub mod maintenance;
 pub mod static_files;
 pub mod tls;
@@ -42,6 +43,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
             data_dir: Some(config.data.clone()),
             agent_ca_pem: tls::generated_cert_pem(&config)?,
             in_cluster_url: fleetops_kube::env::in_cluster_url(),
+            update_check: config.update_check,
             ..ApiConfig::default()
         },
     )
@@ -60,6 +62,21 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
     }
     tokio::spawn(fleetops_api::stacks::run_recovery(state.clone()));
     tokio::spawn(fleetops_api::stacks::git::run_git_polling(state.clone()));
+    if config.update_check {
+        // Best effort: a client that cannot be built turns the check off,
+        // never the server.
+        match github::GitHubReleases::new() {
+            Ok(source) => {
+                tokio::spawn(fleetops_api::update_check::run(
+                    state.update.clone(),
+                    Arc::new(source),
+                    Duration::from_secs(60),
+                    Duration::from_secs(24 * 60 * 60),
+                ));
+            }
+            Err(e) => tracing::warn!(error = %e, "update check off: no HTTP client"),
+        }
+    }
     #[cfg(feature = "enterprise")]
     let app = {
         let ee = fleetops_ee::init(

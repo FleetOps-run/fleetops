@@ -3214,6 +3214,37 @@ export type ValidateResponse = {
     warnings: Array<ComposeIssue>;
 };
 
+/**
+ * This server's version and the newest release the update check has seen.
+ */
+export type VersionInfo = {
+    /**
+     * Whether this server checks for updates (`--update-check`).
+     */
+    check_enabled: boolean;
+    /**
+     * When the newest release was last seen (unix seconds).
+     */
+    checked_at?: number | null;
+    /**
+     * The running version, e.g. `1.5.0`.
+     */
+    current: string;
+    /**
+     * The newest release's tag, e.g. `v1.6.0`; none before the first
+     * successful check.
+     */
+    latest?: string | null;
+    /**
+     * The newest release's page.
+     */
+    release_url?: string | null;
+    /**
+     * Whether `latest` is newer than `current`.
+     */
+    update_available: boolean;
+};
+
 export type VolumeSpec = {
     driver?: string | null;
     driver_opts?: {
@@ -10552,6 +10583,31 @@ export type StackWebhookResponses = {
 };
 
 export type StackWebhookResponse = StackWebhookResponses[keyof StackWebhookResponses];
+
+export type GetVersionData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/system/version';
+};
+
+export type GetVersionErrors = {
+    /**
+     * Error: `{code, message, request_id}`
+     */
+    default: ErrorBody;
+};
+
+export type GetVersionError = GetVersionErrors[keyof GetVersionErrors];
+
+export type GetVersionResponses = {
+    /**
+     * Version
+     */
+    200: VersionInfo;
+};
+
+export type GetVersionResponse = GetVersionResponses[keyof GetVersionResponses];
 
 export type GetTaskData = {
     body?: never;

@@ -73,6 +73,9 @@ pub struct ApiConfig {
     /// How often an open port-forward pings its client, so proxies in
     /// between do not drop an idle connection.
     pub forward_ping: Duration,
+    /// Whether the server asks GitHub for the newest release
+    /// (`--update-check`); off here so tests never poll.
+    pub update_check: bool,
 }
 
 impl Default for ApiConfig {
@@ -98,6 +101,7 @@ impl Default for ApiConfig {
             in_cluster_url: None,
             forward_recheck: Duration::from_secs(60),
             forward_ping: Duration::from_secs(25),
+            update_check: false,
         }
     }
 }
@@ -150,6 +154,8 @@ pub struct AppState {
     pub hook_address_limiter: Arc<LoginLimiter>,
     /// Port-forward tickets and credentials.
     pub forwards: Arc<crate::forward::Forwards>,
+    /// The newest FleetOps release the update check has seen.
+    pub update: Arc<crate::update_check::UpdateStatus>,
 }
 
 impl AppState {
@@ -186,6 +192,7 @@ impl AppState {
                 crate::routes::stack_hooks::HOOK_WINDOW,
             )),
             forwards: Arc::default(),
+            update: Arc::default(),
         }
     }
 
