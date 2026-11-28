@@ -14,9 +14,9 @@ pub mod swarm;
 pub mod swarm_agents;
 pub mod swarm_protect;
 pub mod swarm_write;
-pub mod version;
 pub mod tasks;
 pub mod users;
+pub mod version;
 
 use crate::{error::ApiError, AppState};
 use axum::{extract::DefaultBodyLimit, Json};
