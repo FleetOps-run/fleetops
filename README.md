@@ -22,7 +22,7 @@ It is an open-source alternative to Portainer: roles, Kubernetes namespace scopi
 - **Small and fast.** One static binary of about 34 MB, or a distroless image. CI checks that idle memory stays under 50 MiB on a host with 50 containers.
 - **Built for incidents.** A virtualized log viewer that handles 200k lines with search and ANSI colour, and a terminal that never silently starts a new shell. Every exec and every change is audited.
 - **Access control included.** Per-environment viewer and operator roles, namespace scoping on clusters, and an audit log are free and Apache-2.0.
-- **No telemetry.** FleetOps never phones home.
+- **No telemetry.** The only outbound call is an anonymous daily check for a newer release on GitHub, so admins see when an update is out; turn it off with `FLEETOPS_UPDATE_CHECK=false`.
 
 ## Screenshots
 
@@ -243,6 +243,7 @@ Configuration comes from CLI flags or environment variables. There is no config 
 | `--helm-insecure-repos` | `FLEETOPS_HELM_INSECURE_REPOS` | off | Allow `http://` chart repositories |
 | `--license-file` | `FLEETOPS_LICENSE_FILE` | unset | Enterprise only: license file; one uploaded in Admin → License takes precedence |
 | `--public-url` | `FLEETOPS_PUBLIC_URL` | unset | Where browsers reach FleetOps, for example `https://fleet.example.com`. Single sign-on needs it to build its callback URL |
+| `--update-check` | `FLEETOPS_UPDATE_CHECK` | `true` | Ask GitHub once a day for the newest release and show admins a banner when one is out. The request carries nothing about this server. `false` turns it off |
 | `--kube-exec-plugins` | `FLEETOPS_KUBE_EXEC_PLUGINS` | unset (off) | Exec plugins kubeconfig users may run: `default` (aws, aws-iam-authenticator, gke-gcloud-auth-plugin, kubelogin) and extra bare names, comma-separated |
 | `--secret-key` | `FLEETOPS_SECRET_KEY` | unset (`<data>/secret.key`) | 32 bytes, base64: seals stored kubeconfigs. Back it up with the database |
 | `--log-level` | `FLEETOPS_LOG` | `info` | `tracing` filter, for example `fleetops_api=debug,info` |

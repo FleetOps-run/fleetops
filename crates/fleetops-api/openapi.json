@@ -12691,6 +12691,42 @@
         ]
       }
     },
+    "/api/v1/system/version": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "This server's version and whether a newer release is out (admins only)",
+        "operationId": "getVersion",
+        "responses": {
+          "200": {
+            "description": "Version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionInfo"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error: `{code, message, request_id}`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/v1/tasks/{id}": {
       "get": {
         "tags": [
@@ -21763,6 +21799,51 @@
             "items": {
               "$ref": "#/components/schemas/ComposeIssue"
             }
+          }
+        }
+      },
+      "VersionInfo": {
+        "type": "object",
+        "description": "This server's version and the newest release the update check has seen.",
+        "required": [
+          "current",
+          "update_available",
+          "check_enabled"
+        ],
+        "properties": {
+          "check_enabled": {
+            "type": "boolean",
+            "description": "Whether this server checks for updates (`--update-check`)."
+          },
+          "checked_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the newest release was last seen (unix seconds)."
+          },
+          "current": {
+            "type": "string",
+            "description": "The running version, e.g. `1.5.0`."
+          },
+          "latest": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The newest release's tag, e.g. `v1.6.0`; none before the first\nsuccessful check."
+          },
+          "release_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The newest release's page."
+          },
+          "update_available": {
+            "type": "boolean",
+            "description": "Whether `latest` is newer than `current`."
           }
         }
       },

@@ -61,4 +61,23 @@ pub struct Config {
     /// Print the OpenAPI document to stdout and exit without starting.
     #[arg(long)]
     pub openapi: bool,
+    /// Check GitHub once a day for a newer FleetOps release and tell admins.
+    /// Sends nothing about this server. `false` turns it off.
+    #[arg(long, env = "FLEETOPS_UPDATE_CHECK", default_value_t = true, action = clap::ArgAction::Set)]
+    pub update_check: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn update_check_defaults_on_and_can_be_disabled() {
+        assert!(Config::try_parse_from(["fleetops"]).unwrap().update_check);
+        assert!(
+            !Config::try_parse_from(["fleetops", "--update-check", "false"])
+                .unwrap()
+                .update_check
+        );
+    }
 }

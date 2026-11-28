@@ -28,12 +28,15 @@ fleetops-kube.workspace = true
 fleetops-ee = { workspace = true, optional = true }
 anyhow.workspace = true
 axum.workspace = true
+async-trait.workspace = true
 axum-server.workspace = true
 clap.workspace = true
 mime_guess.workspace = true
+reqwest.workspace = true
 rcgen.workspace = true
 rust-embed.workspace = true
 rustls.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 tracing.workspace = true

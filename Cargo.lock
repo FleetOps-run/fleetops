@@ -1858,6 +1858,7 @@ name = "fleetops-server"
 version = "1.5.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
  "axum-server",
  "clap",
@@ -1873,8 +1874,10 @@ dependencies = [
  "http-body-util",
  "mime_guess",
  "rcgen",
+ "reqwest 0.12.28",
  "rust-embed",
  "rustls",
+ "serde",
  "serde_json",
  "tempfile",
  "tokio",
