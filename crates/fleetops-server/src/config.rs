@@ -63,7 +63,13 @@ pub struct Config {
     pub openapi: bool,
     /// Check GitHub once a day for a newer FleetOps release and tell admins.
     /// Sends nothing about this server. `false` turns it off.
-    #[arg(long, env = "FLEETOPS_UPDATE_CHECK", default_value_t = true, action = clap::ArgAction::Set)]
+    #[arg(
+        long,
+        env = "FLEETOPS_UPDATE_CHECK",
+        default_value_t = true,
+        action = clap::ArgAction::Set,
+        value_parser = clap::builder::BoolishValueParser::new()
+    )]
     pub update_check: bool,
 }
 
@@ -79,5 +85,20 @@ mod tests {
                 .unwrap()
                 .update_check
         );
+    }
+
+    #[test]
+    fn update_check_accepts_common_spellings() {
+        let parse = |v: &str| {
+            Config::try_parse_from(["fleetops", "--update-check", v])
+                .unwrap_or_else(|e| panic!("{v}: {e}"))
+                .update_check
+        };
+        for off in ["0", "off", "no", "False", "FALSE"] {
+            assert!(!parse(off), "{off}");
+        }
+        for on in ["1", "on", "yes", "True"] {
+            assert!(parse(on), "{on}");
+        }
     }
 }

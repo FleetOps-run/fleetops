@@ -63,12 +63,19 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
     tokio::spawn(fleetops_api::stacks::run_recovery(state.clone()));
     tokio::spawn(fleetops_api::stacks::git::run_git_polling(state.clone()));
     if config.update_check {
-        tokio::spawn(fleetops_api::update_check::run(
-            state.update.clone(),
-            Arc::new(github::GitHubReleases::new()?),
-            Duration::from_secs(60),
-            Duration::from_secs(24 * 60 * 60),
-        ));
+        // Best effort: a client that cannot be built turns the check off,
+        // never the server.
+        match github::GitHubReleases::new() {
+            Ok(source) => {
+                tokio::spawn(fleetops_api::update_check::run(
+                    state.update.clone(),
+                    Arc::new(source),
+                    Duration::from_secs(60),
+                    Duration::from_secs(24 * 60 * 60),
+                ));
+            }
+            Err(e) => tracing::warn!(error = %e, "update check off: no HTTP client"),
+        }
     }
     #[cfg(feature = "enterprise")]
     let app = {
