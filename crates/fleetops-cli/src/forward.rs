@@ -47,6 +47,9 @@ struct Redeemed {
     /// Seconds the link lasts (older servers do not send it).
     #[serde(default)]
     expires_in: Option<i64>,
+    /// The server's version (older servers do not send it).
+    #[serde(default)]
+    server_version: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -146,6 +149,9 @@ pub async fn run_with(
         .context("unexpected answer from the server")?;
     // The server's count, so a skewed local clock cannot end it early.
     let lasts_for = r.expires_in.unwrap_or_else(|| r.expires_at - now());
+    if let Some(note) = version_note(env!("CARGO_PKG_VERSION"), r.server_version.as_deref()) {
+        eprintln!("{note}");
+    }
 
     let listener = TcpListener::bind((args.address, local_port(args.local, r.port)))
         .await
@@ -368,4 +374,22 @@ async fn carry(
 /// over the close frame's reason (capped at 123 bytes).
 pub fn close_reason(text: Option<String>, close: Option<String>) -> Option<String> {
     text.or(close)
+}
+
+/// The note to print when this CLI is older than the server it reached;
+/// `None` when it is not, or when either version is not `X.Y.Z`.
+pub fn version_note(cli: &str, server: Option<&str>) -> Option<String> {
+    fn parse(v: &str) -> Option<(u64, u64, u64)> {
+        let mut parts = v.strip_prefix('v').unwrap_or(v).split('.');
+        let mut next = || parts.next()?.parse::<u64>().ok();
+        let v = (next()?, next()?, next()?);
+        parts.next().is_none().then_some(v)
+    }
+    let server = server?;
+    (parse(server)? > parse(cli)?).then(|| {
+        format!(
+            "note: fleetops-cli {cli} is older than this server ({server}); \
+             download the matching one: https://github.com/FleetOps-run/fleetops/releases/tag/v{server}"
+        )
+    })
 }

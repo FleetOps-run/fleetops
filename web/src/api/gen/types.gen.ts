@@ -2052,6 +2052,10 @@ export type Redeemed = {
     namespace: string;
     pod: string;
     port: number;
+    /**
+     * This server's version, e.g. `1.6.0`; fleetops-cli notes when it is older.
+     */
+    server_version: string;
 };
 
 /**

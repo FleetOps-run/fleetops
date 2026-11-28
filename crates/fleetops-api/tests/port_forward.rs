@@ -428,6 +428,18 @@ async fn redeem_reports_expires_in() {
 }
 
 #[tokio::test]
+async fn redeem_reports_the_server_version() {
+    let (t, _, bob) = pf_app(Default::default()).await;
+    let r = redeem(&t, &ticket(&t, &bob).await).await;
+    assert_eq!(
+        r.json["server_version"],
+        env!("CARGO_PKG_VERSION"),
+        "{:?}",
+        r.json
+    );
+}
+
+#[tokio::test]
 async fn redeem_is_rate_limited_per_address() {
     let (t, _, bob) = pf_app(Default::default()).await;
     let mut statuses = Vec::new();

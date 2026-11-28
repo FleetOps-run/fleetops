@@ -21,7 +21,7 @@ The link in the command works **once**, within **5 minutes**. A user can have up
 
 ## Get fleetops-cli
 
-Download it for Linux (amd64, arm64), macOS (Apple silicon, Intel) or Windows from the [latest release](https://github.com/FleetOps-run/fleetops/releases/latest), with a SHA-256 checksum next to each file. It is a single file of about 3 MB; put it on your `PATH`.
+Download it for Linux (amd64, arm64), macOS (Apple silicon, Intel) or Windows from the [latest release](https://github.com/FleetOps-run/fleetops/releases/latest), with a SHA-256 checksum next to each file. It is a single file of about 3 MB; put it on your `PATH`. When your copy is older than the FleetOps server it connects to, it prints a note with a link to the matching release; it asks nothing of GitHub itself.
 
 ```
 fleetops-cli forward --server <URL> <link> [--local <port>] [--address <ip>] [--ca <file>]

@@ -284,3 +284,26 @@ fn the_text_frame_is_the_reason() {
     );
     assert_eq!(close_reason(None, None), None);
 }
+
+#[test]
+fn notes_a_cli_older_than_the_server() {
+    let note = fleetops_cli::forward::version_note("1.5.0", Some("1.6.0")).unwrap();
+    assert!(
+        note.contains("fleetops-cli 1.5.0 is older than this server (1.6.0)"),
+        "{note}"
+    );
+    assert!(
+        note.contains("https://github.com/FleetOps-run/fleetops/releases/tag/v1.6.0"),
+        "{note}"
+    );
+}
+
+#[test]
+fn no_note_when_current_newer_or_unknown() {
+    use fleetops_cli::forward::version_note;
+    assert_eq!(version_note("1.6.0", Some("1.6.0")), None);
+    assert_eq!(version_note("1.7.0", Some("1.6.0")), None);
+    assert_eq!(version_note("1.5.0", None), None);
+    assert_eq!(version_note("1.5.0", Some("1.6.0-dev")), None);
+    assert_eq!(version_note("1.5.0", Some("garbage")), None);
+}
