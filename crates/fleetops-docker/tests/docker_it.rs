@@ -13,6 +13,11 @@ use fleetops_docker::{DockerEnvFactory, LocalDocker};
 use futures_util::StreamExt;
 use std::collections::BTreeMap;
 
+/// Held by every test that builds or removes images. With the classic
+/// builder, removing an image while another build runs can fail that build
+/// with `unable to find image "sha256:…"`, so those tests take turns.
+static IMAGES: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 const IMAGE: &str = "alpine:3.20";
 
 fn host() -> String {
@@ -220,6 +225,7 @@ async fn browse_and_read_files() {
 
 #[tokio::test]
 async fn images_list_tag_and_remove() {
+    let _images = IMAGES.lock().await;
     let d = docker().await;
     let images = d.list_images().await.unwrap();
     let alpine = images
@@ -743,6 +749,7 @@ mod streams {
 
     #[tokio::test]
     async fn build_from_a_dockerfile_streams_output_and_tags() {
+        let _images = IMAGES.lock().await;
         let d = docker().await;
         let tag = format!("fleetops-it-build:{}", std::process::id());
         let spec = BuildSpec {
@@ -766,6 +773,7 @@ mod streams {
 
     #[tokio::test]
     async fn build_passes_args_target_and_labels() {
+        let _images = IMAGES.lock().await;
         let d = docker().await;
         let tag = format!("fleetops-it-args:{}", std::process::id());
         let spec = BuildSpec {
@@ -810,6 +818,7 @@ mod streams {
 
     #[tokio::test]
     async fn failing_build_step_is_an_error() {
+        let _images = IMAGES.lock().await;
         let d = docker().await;
         let spec = BuildSpec {
             context: BuildContext::Dockerfile(b"FROM alpine:3.20\nRUN exit 7\n".to_vec()),
